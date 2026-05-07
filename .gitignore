@@ -2,3 +2,5 @@
 **/.vscode/
 **/frontend/.angular/
 **/.env
+subvision.db
+**/__pycache__

@@ -112,7 +112,11 @@ class CameraStream:
             await asyncio.to_thread(self._cap.release)
             self._cap = None
 
-
+class VideoIngestWorker:
+    """
+    Manages all camera streams. Publishes JPEG snapshots and
+    updates the EventEngine frame cursor for event correlation.
+    """
     def __init__(self) -> None:
         self._streams: Dict[str, CameraStream] = {}
 

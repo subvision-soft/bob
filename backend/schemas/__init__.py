@@ -111,7 +111,7 @@ class EventLogResponse(BaseModel):
 
 class OBSConnectRequest(BaseModel):
     url: str = "ws://localhost:4455"
-    password: str = ""
+    password: str = "SECRET"
 
 
 class OBSSceneSwitchRequest(BaseModel):

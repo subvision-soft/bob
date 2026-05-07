@@ -22,6 +22,7 @@ async def obs_status():
 
 @router.post("/connect", status_code=200)
 async def obs_connect(payload: OBSConnectRequest):
+    print("HELLO")
     client = get_obs_client()
     try:
         await client.connect()

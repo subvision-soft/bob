@@ -21,6 +21,8 @@ log = structlog.get_logger(__name__)
 router = APIRouter()
 
 
+from sqlalchemy.orm import selectinload
+
 def _model_to_response(camera: Camera) -> CameraResponse:
     return CameraResponse(
         id=camera.id,
@@ -67,7 +69,7 @@ async def _register_camera_subscriber(camera: Camera) -> None:
 
 @router.get("/", response_model=List[CameraResponse])
 async def list_cameras(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Camera).where(Camera.enabled == True))
+    result = await db.execute(select(Camera).where(Camera.enabled == True).options(selectinload(Camera.subscriptions)))
     cameras = result.scalars().all()
     return [_model_to_response(c) for c in cameras]
 
@@ -99,7 +101,9 @@ async def create_camera(payload: CameraCreate, db: AsyncSession = Depends(get_db
         ))
 
     await db.commit()
-    await db.refresh(camera)
+    # Eager load the newly created subscriptions
+    result = await db.execute(select(Camera).where(Camera.id == camera.id).options(selectinload(Camera.subscriptions)))
+    camera = result.scalar_one()
 
     # Register in live subscriber system
     await _register_camera_subscriber(camera)
@@ -110,7 +114,8 @@ async def create_camera(payload: CameraCreate, db: AsyncSession = Depends(get_db
 
 @router.get("/{camera_id}", response_model=CameraResponse)
 async def get_camera(camera_id: str, db: AsyncSession = Depends(get_db)):
-    camera = await db.get(Camera, camera_id)
+    result = await db.execute(select(Camera).where(Camera.id == camera_id).options(selectinload(Camera.subscriptions)))
+    camera = result.scalar_one_or_none()
     if not camera:
         raise HTTPException(status_code=404, detail="Camera not found")
     return _model_to_response(camera)
@@ -122,7 +127,8 @@ async def update_camera(
     payload: CameraUpdate,
     db: AsyncSession = Depends(get_db),
 ):
-    camera = await db.get(Camera, camera_id)
+    result = await db.execute(select(Camera).where(Camera.id == camera_id).options(selectinload(Camera.subscriptions)))
+    camera = result.scalar_one_or_none()
     if not camera:
         raise HTTPException(status_code=404, detail="Camera not found")
 
@@ -160,7 +166,10 @@ async def update_camera(
             ))
 
     await db.commit()
-    await db.refresh(camera)
+    
+    # Eager load updated subscriptions
+    result = await db.execute(select(Camera).where(Camera.id == camera_id).options(selectinload(Camera.subscriptions)))
+    camera = result.scalar_one()
 
     # Re-register subscriber with new config
     await subscriber_registry.unregister(camera_id)

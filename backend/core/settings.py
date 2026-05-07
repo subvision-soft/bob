@@ -41,7 +41,7 @@ class Settings(BaseSettings):
 
     # ── OBS ───────────────────────────────────────────────────────────
     obs_websocket_url: str = "ws://localhost:4455"
-    obs_websocket_password: str = ""
+    obs_websocket_password: str = "SECRET"
     obs_enabled: bool = True
 
     # ── Video / Streaming ─────────────────────────────────────────────

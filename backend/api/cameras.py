@@ -288,8 +288,12 @@ async def simulate_camera_event(
 
     try:
         event_type = EventType(payload.event_type.upper())
-    except ValueError:
-        event_type = EventType.UNKNOWN
+    except ValueError as exc:
+        valid_types = ", ".join(et.value for et in EventType if et != EventType.UNKNOWN)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid event_type. Supported values: {valid_types}",
+        ) from exc
 
     event = CompetitionEvent(
         type=event_type,

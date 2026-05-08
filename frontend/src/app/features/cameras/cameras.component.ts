@@ -495,7 +495,9 @@ export class CamerasComponent implements OnInit {
   }
 
   simulateForCamera(camera: Camera): void {
-    const sub = camera.subscriptions.find(s => s.enabled);
+    const sub = camera.subscriptions
+      .filter(s => s.enabled)
+      .sort((a, b) => b.priority - a.priority)[0];
     if (!sub) {
       this.msg.add({ severity: 'warn', summary: 'Simulation', detail: 'No enabled subscription on this camera' });
       return;

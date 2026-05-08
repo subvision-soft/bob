@@ -495,7 +495,7 @@ export class CamerasComponent implements OnInit {
   }
 
   simulateForCamera(camera: Camera): void {
-    const sub = camera.subscriptions
+    const sub = (camera.subscriptions ?? [])
       .filter(s => s.enabled)
       .sort((a, b) => b.priority - a.priority)[0];
     if (!sub) {
@@ -511,7 +511,11 @@ export class CamerasComponent implements OnInit {
         });
       },
       error: err => {
-        this.msg.add({ severity: 'error', summary: 'Simulation', detail: err?.message ?? 'Failed to simulate event' });
+        this.msg.add({
+          severity: 'error',
+          summary: 'Simulation',
+          detail: err?.message ?? `Failed to simulate event for ${camera.label}`,
+        });
       },
     });
   }

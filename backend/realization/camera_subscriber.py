@@ -91,11 +91,7 @@ class CameraEventSubscriber:
         - Compute score
         - Set pending state
         """
-        target_camera_id = (
-            event.raw_payload.get("target_camera_id")
-            if isinstance(event.raw_payload, dict)
-            else None
-        )
+        target_camera_id = event.raw_payload.get("target_camera_id") if isinstance(event.raw_payload, dict) else None
         if target_camera_id and target_camera_id != self.camera_id:
             return
 

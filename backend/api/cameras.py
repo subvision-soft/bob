@@ -286,8 +286,12 @@ async def simulate_camera_event(
     if not camera.enabled:
         raise HTTPException(status_code=400, detail="Camera is disabled")
 
+    raw_event_type = payload.event_type.strip().upper()
+    if not raw_event_type:
+        raise HTTPException(status_code=400, detail="event_type is required")
+
     try:
-        event_type = EventType(payload.event_type.upper())
+        event_type = EventType(raw_event_type)
     except ValueError as exc:
         valid_types = ", ".join(et.value for et in EventType if et != EventType.UNKNOWN)
         raise HTTPException(

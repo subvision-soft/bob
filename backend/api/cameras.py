@@ -8,20 +8,20 @@ from typing import List
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from backend.database import get_db
 from backend.models import Camera, CameraSubscriptionModel, CameraSubscriptionSceneOption
+from backend.core.event_bus import event_bus
+from backend.events.models import CompetitionEvent, EventType, EVENT_SEVERITY
 from backend.realization.camera_context import CameraContext, CameraSubscription, ObsSceneOption, ReactionMode
 from backend.realization.camera_subscriber import subscriber_registry
-from backend.schemas import CameraCreate, CameraResponse, CameraUpdate
+from backend.schemas import CameraCreate, CameraEventSimulateRequest, CameraResponse, CameraUpdate
 
 log = structlog.get_logger(__name__)
 router = APIRouter()
-
-
-from sqlalchemy.orm import selectinload
 
 def _model_to_response(camera: Camera) -> CameraResponse:
     return CameraResponse(
@@ -82,7 +82,7 @@ async def _register_camera_subscriber(camera: Camera) -> None:
 async def list_cameras(db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Camera)
-        .where(Camera.enabled == True)
+        .where(Camera.enabled)
         .options(
             selectinload(Camera.subscriptions).selectinload(CameraSubscriptionModel.obs_scene_options),
         )
@@ -272,3 +272,43 @@ async def get_camera_context(camera_id: str):
 async def get_all_scores():
     """Return live scores for all cameras — used by monitoring UI."""
     return [ctx.to_dict() for ctx in subscriber_registry.get_all_contexts()]
+
+
+@router.post("/{camera_id}/simulate", status_code=status.HTTP_202_ACCEPTED)
+async def simulate_camera_event(
+    camera_id: str,
+    payload: CameraEventSimulateRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    camera = await db.get(Camera, camera_id)
+    if not camera:
+        raise HTTPException(status_code=404, detail="Camera not found")
+    if not camera.enabled:
+        raise HTTPException(status_code=400, detail="Camera is disabled")
+
+    try:
+        event_type = EventType(payload.event_type.upper())
+    except ValueError:
+        event_type = EventType.UNKNOWN
+
+    event = CompetitionEvent(
+        type=event_type,
+        severity=EVENT_SEVERITY.get(event_type),
+        competition_id=payload.competition_id,
+        athlete_id=payload.athlete_id,
+        lane=payload.lane,
+        raw_payload={
+            "simulated": True,
+            "target_camera_id": camera_id,
+            **(payload.extra or {}),
+        },
+    )
+
+    delivered = await event_bus.publish(event)
+    log.info(
+        "cameras.event_simulated",
+        camera_id=camera_id,
+        event_type=event_type,
+        delivered=delivered,
+    )
+    return {"event_id": event.id, "camera_id": camera_id, "delivered_to": delivered}

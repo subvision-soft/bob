@@ -23,7 +23,7 @@ import structlog
 from backend.core.event_bus import event_bus
 from backend.core.scoring import compute_score, ScoreBreakdown
 from backend.events.models import CompetitionEvent
-from backend.realization.camera_context import CameraContext, CameraSubscription, ReactionMode
+from backend.realization.camera_context import CameraContext, ReactionMode
 
 log = structlog.get_logger(__name__)
 
@@ -91,6 +91,14 @@ class CameraEventSubscriber:
         - Compute score
         - Set pending state
         """
+        target_camera_id = (
+            event.raw_payload.get("target_camera_id")
+            if isinstance(event.raw_payload, dict)
+            else None
+        )
+        if target_camera_id and target_camera_id != self.camera_id:
+            return
+
         sub = self._ctx.get_subscription(event.type)
 
         # Always push event to history (even if not subscribed, for global context)

@@ -112,6 +112,12 @@ export class ApiService {
   getAllScores(): Observable<CameraContext[]> {
     return this.http.get<CameraContext[]>(`${API_BASE}/cameras/live/scores`);
   }
+  simulateCameraEvent(cameraId: string, eventType: string, extra?: Record<string, unknown>): Observable<unknown> {
+    return this.http.post(`${API_BASE}/cameras/${cameraId}/simulate`, {
+      event_type: eventType,
+      ...extra,
+    });
+  }
 
   // ── Rules ────────────────────────────────────────────────────────
   getProfiles(): Observable<RuleProfile[]> {

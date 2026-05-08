@@ -100,6 +100,15 @@ class EventSimulateRequest(BaseModel):
     extra: Optional[Dict[str, Any]] = None
 
 
+class CameraEventSimulateRequest(BaseModel):
+    """Used by the camera UI to inject a test event targeted to one camera."""
+    event_type: str
+    competition_id: Optional[str] = None
+    athlete_id: Optional[str] = None
+    lane: Optional[int] = None
+    extra: Optional[Dict[str, Any]] = None
+
+
 class EventLogResponse(BaseModel):
     id: str
     event_type: str

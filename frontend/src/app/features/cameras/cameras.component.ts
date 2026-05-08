@@ -118,6 +118,8 @@ const EVENT_TYPES = [
               <div class="action-btns">
                 <p-button icon="pi pi-pencil" severity="secondary" [text]="true" size="small"
                           (onClick)="openEditDialog(cam)" pTooltip="Edit" />
+                <p-button icon="pi pi-bolt" severity="help" [text]="true" size="small"
+                          (onClick)="simulateForCamera(cam)" pTooltip="Simulate event" />
                 <p-button icon="pi pi-trash" severity="danger" [text]="true" size="small"
                           (onClick)="deleteCamera(cam.id)" pTooltip="Delete" />
               </div>
@@ -489,6 +491,32 @@ export class CamerasComponent implements OnInit {
     this.api.deleteCamera(id).subscribe(() => {
       this.msg.add({ severity: 'success', summary: 'Deleted', detail: 'Camera removed' });
       this.loadCameras();
+    });
+  }
+
+  simulateForCamera(camera: Camera): void {
+    const sub = (camera.subscriptions ?? [])
+      .filter(s => s.enabled)
+      .sort((a, b) => b.priority - a.priority)[0];
+    if (!sub) {
+      this.msg.add({ severity: 'warn', summary: 'Simulation', detail: 'No enabled subscription on this camera' });
+      return;
+    }
+    this.api.simulateCameraEvent(camera.id, sub.event_type).subscribe({
+      next: () => {
+        this.msg.add({
+          severity: 'success',
+          summary: 'Simulation',
+          detail: `Simulated ${sub.event_type} for ${camera.label}`,
+        });
+      },
+      error: err => {
+        this.msg.add({
+          severity: 'error',
+          summary: 'Simulation',
+          detail: err?.message ?? `Failed to simulate event for ${camera.label}`,
+        });
+      },
     });
   }
 

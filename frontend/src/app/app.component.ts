@@ -1,7 +1,7 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { CommonModule } from '@angular/common';
-import { Subject, takeUntil } from 'rxjs';
+import { Subject, takeUntil, interval } from 'rxjs';
 
 import { MenubarModule } from 'primeng/menubar';
 import { BadgeModule } from 'primeng/badge';
@@ -77,6 +77,18 @@ import { AppStore } from './store/app.store';
             <span class="svs-dot svs-dot--green"></span>
             <span class="svs-status-chip__label">PREV</span>
             <strong>{{ cam.label }}</strong>
+          </div>
+
+          <!-- Backend health indicator -->
+          <div class="svs-status-indicator" [class.connected]="isBackendHealthy()">
+            <i class="pi" [class.pi-server]="isBackendHealthy()" [class.pi-exclamation-triangle]="!isBackendHealthy()"></i>
+            <span>{{ isBackendHealthy() ? 'Backend' : 'Backend ⚠' }}</span>
+          </div>
+
+          <!-- OBS connection indicator -->
+          <div class="svs-status-indicator" [class.connected]="isObsConnected()">
+            <i class="pi" [class.pi-desktop]="isObsConnected()" [class.pi-exclamation-triangle]="!isObsConnected()"></i>
+            <span>{{ isObsConnected() ? 'OBS' : 'OBS ⚠' }}</span>
           </div>
 
           <!-- WS connection -->
@@ -199,6 +211,16 @@ import { AppStore } from './store/app.store';
       &--green { background: var(--svs-preview-color); }
     }
 
+    .svs-status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-size: 0.72rem;
+      color: var(--svs-danger);
+      i { font-size: 0.75rem; }
+      &.connected { color: var(--svs-success); }
+    }
+
     .svs-ws-indicator {
       display: flex;
       align-items: center;
@@ -225,11 +247,13 @@ export class AppComponent implements OnInit, OnDestroy {
     public ws: WebSocketService,
     public store: AppStore,
     private api: ApiService,
-  ) {}
+  ) { }
 
   ngOnInit(): void {
     this._loadInitialData();
     this._subscribeToWebSocket();
+    this._setupPolling();
+    this._autoConnectObs();
   }
 
   private _loadInitialData(): void {
@@ -239,6 +263,48 @@ export class AppComponent implements OnInit, OnDestroy {
     this.api.getObsStatus().subscribe(status => this.store.updateObsStatus(status));
     // Load health
     this.api.getHealth().subscribe(h => this.store.health.set(h));
+  }
+
+  private _setupPolling(): void {
+    // Poll every 10 seconds for health and OBS status
+    interval(10000)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(() => {
+        this.api.getHealth().subscribe(
+          h => this.store.health.set(h),
+          err => console.error('Health check failed:', err)
+        );
+        this.api.getObsStatus().subscribe(
+          status => this.store.updateObsStatus(status),
+          err => console.error('OBS status check failed:', err)
+        );
+      });
+  }
+
+  private _autoConnectObs(): void {
+    // Try to get stored OBS connection settings
+    const obsSettings = localStorage.getItem('obs_settings');
+    if (obsSettings) {
+      try {
+        const settings = JSON.parse(obsSettings);
+        if (settings.url && settings.password) {
+          this.api.connectObs(settings.url, settings.password).subscribe(
+            () => console.log('Auto-connected to OBS'),
+            err => console.error('Failed to auto-connect to OBS:', err)
+          );
+        }
+      } catch (e) {
+        console.error('Failed to parse OBS settings:', e);
+      }
+    }
+  }
+
+  isBackendHealthy(): boolean {
+    return this.store.health()?.status === 'ok';
+  }
+
+  isObsConnected(): boolean {
+    return this.store.obsStatus()?.state === 'CONNECTED';
   }
 
   private _subscribeToWebSocket(): void {

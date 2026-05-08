@@ -17,6 +17,7 @@ instead of audio-level driven.
 from __future__ import annotations
 
 import asyncio
+import random
 import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, TYPE_CHECKING
@@ -242,6 +243,7 @@ class RealizationDecisionEngine:
         winner.mark_on_air()
         winner.pending_transition = False
         winner.pending_mode = None
+        winner.pending_event_type = None
 
         # Apply cooldown to winner (anti-zap)
         if self._default_cooldown_ms > 0:
@@ -264,10 +266,18 @@ class RealizationDecisionEngine:
 
         # ── OBS integration ────────────────────────────────────────────
         if self._obs and settings.obs_enabled:
-            try:
-                await self._obs.set_program_scene(winner.camera_id)
-            except Exception as e:
-                log.error("decision_engine.obs_switch_failed", error=str(e))
+            scene_name = self._pick_obs_scene(winner)
+            if scene_name is None:
+                log.info(
+                    "decision_engine.obs_switch_skipped",
+                    camera_id=winner.camera_id,
+                    reason="no_scene_options",
+                )
+            else:
+                try:
+                    await self._obs.set_program_scene(scene_name)
+                except Exception as e:
+                    log.error("decision_engine.obs_switch_failed", error=str(e))
 
     async def _handle_prepare_mode(self, contexts: list[CameraContext]) -> None:
         """Load PREPARE-mode cameras into OBS preview without switching program."""
@@ -278,12 +288,39 @@ class RealizationDecisionEngine:
         if prepare_candidates and self._obs and settings.obs_enabled:
             best = max(prepare_candidates, key=lambda c: c.interest_score)
             if best.camera_id != self._ctx.preview_camera_id:
-                try:
-                    await self._obs.set_preview_scene(best.camera_id)
-                    self._ctx.preview_camera_id = best.camera_id
-                    log.info("decision_engine.preview_preloaded", camera_id=best.camera_id)
-                except Exception as e:
-                    log.error("decision_engine.obs_preview_failed", error=str(e))
+                scene_name = self._pick_obs_scene(best)
+                if scene_name is None:
+                    log.info(
+                        "decision_engine.obs_preview_skipped",
+                        camera_id=best.camera_id,
+                        reason="no_scene_options",
+                    )
+                else:
+                    try:
+                        await self._obs.set_preview_scene(scene_name)
+                        self._ctx.preview_camera_id = best.camera_id
+                        log.info("decision_engine.preview_preloaded", camera_id=best.camera_id)
+                    except Exception as e:
+                        log.error("decision_engine.obs_preview_failed", error=str(e))
+
+    def _pick_obs_scene(self, ctx: CameraContext) -> Optional[str]:
+        event_type = ctx.pending_event_type or ctx.last_event_type
+        if not event_type:
+            return None
+        sub = ctx.get_subscription(event_type)
+        if not sub:
+            return None
+        options = [o for o in sub.obs_scene_options if o.scene_name and o.weight > 0]
+        if not options:
+            return None
+        total_weight = sum(o.weight for o in options)
+        roll = random.uniform(0.0, total_weight)
+        running = 0.0
+        for option in options:
+            running += option.weight
+            if roll <= running:
+                return option.scene_name
+        return options[-1].scene_name
 
 
 # ── Singleton ─────────────────────────────────────────────────────────────────

@@ -13,6 +13,7 @@ from sqlalchemy import select
 
 from backend.database import AsyncSessionLocal
 from backend.models import Camera, CameraSubscriptionModel, RuleProfile
+from sqlalchemy.orm import selectinload
 
 router = APIRouter()
 
@@ -20,7 +21,11 @@ router = APIRouter()
 @router.get("/export")
 async def export_config():
     async with AsyncSessionLocal() as db:
-        cameras_res = await db.execute(select(Camera))
+        cameras_res = await db.execute(
+            select(Camera).options(
+                selectinload(Camera.subscriptions).selectinload(CameraSubscriptionModel.obs_scene_options)
+            )
+        )
         cameras = cameras_res.scalars().all()
 
         profiles_res = await db.execute(select(RuleProfile))
@@ -46,6 +51,13 @@ async def export_config():
                         "cooldown_ms": s.cooldown_ms,
                         "delay_ms": s.delay_ms,
                         "enabled": s.enabled,
+                        "obs_scene_options": [
+                            {
+                                "scene_name": o.scene_name,
+                                "weight": o.weight,
+                            }
+                            for o in s.obs_scene_options
+                        ],
                     }
                     for s in c.subscriptions
                 ],

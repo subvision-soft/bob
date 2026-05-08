@@ -12,8 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from backend.database import get_db
-from backend.models import Camera, CameraSubscriptionModel
-from backend.realization.camera_context import CameraContext, CameraSubscription, ReactionMode
+from backend.models import Camera, CameraSubscriptionModel, CameraSubscriptionSceneOption
+from backend.realization.camera_context import CameraContext, CameraSubscription, ObsSceneOption, ReactionMode
 from backend.realization.camera_subscriber import subscriber_registry
 from backend.schemas import CameraCreate, CameraResponse, CameraUpdate
 
@@ -43,6 +43,13 @@ def _model_to_response(camera: Camera) -> CameraResponse:
                 "delay_ms": s.delay_ms,
                 "enabled": s.enabled,
                 "conditions": s.conditions,
+                "obs_scene_options": [
+                    {
+                        "scene_name": o.scene_name,
+                        "weight": o.weight,
+                    }
+                    for o in s.obs_scene_options
+                ],
             }
             for s in camera.subscriptions
         ],
@@ -60,6 +67,10 @@ async def _register_camera_subscriber(camera: Camera) -> None:
             cooldown_ms=s.cooldown_ms,
             delay_ms=s.delay_ms,
             enabled=s.enabled,
+            obs_scene_options=[
+                ObsSceneOption(scene_name=o.scene_name, weight=o.weight)
+                for o in s.obs_scene_options
+            ],
         )
         for s in camera.subscriptions
     ]
@@ -69,7 +80,13 @@ async def _register_camera_subscriber(camera: Camera) -> None:
 
 @router.get("/", response_model=List[CameraResponse])
 async def list_cameras(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Camera).where(Camera.enabled == True).options(selectinload(Camera.subscriptions)))
+    result = await db.execute(
+        select(Camera)
+        .where(Camera.enabled == True)
+        .options(
+            selectinload(Camera.subscriptions).selectinload(CameraSubscriptionModel.obs_scene_options),
+        )
+    )
     cameras = result.scalars().all()
     return [_model_to_response(c) for c in cameras]
 
@@ -88,7 +105,7 @@ async def create_camera(payload: CameraCreate, db: AsyncSession = Depends(get_db
     await db.flush()
 
     for sub in payload.subscriptions:
-        db.add(CameraSubscriptionModel(
+        sub_model = CameraSubscriptionModel(
             camera_id=camera.id,
             event_type=sub.event_type,
             mode=sub.mode,
@@ -98,11 +115,25 @@ async def create_camera(payload: CameraCreate, db: AsyncSession = Depends(get_db
             delay_ms=sub.delay_ms,
             enabled=sub.enabled,
             conditions=sub.conditions,
-        ))
+        )
+        db.add(sub_model)
+        await db.flush()
+        for option in sub.obs_scene_options:
+            db.add(CameraSubscriptionSceneOption(
+                subscription_id=sub_model.id,
+                scene_name=option.scene_name,
+                weight=option.weight,
+            ))
 
     await db.commit()
     # Eager load the newly created subscriptions
-    result = await db.execute(select(Camera).where(Camera.id == camera.id).options(selectinload(Camera.subscriptions)))
+    result = await db.execute(
+        select(Camera)
+        .where(Camera.id == camera.id)
+        .options(
+            selectinload(Camera.subscriptions).selectinload(CameraSubscriptionModel.obs_scene_options),
+        )
+    )
     camera = result.scalar_one()
 
     # Register in live subscriber system
@@ -114,7 +145,13 @@ async def create_camera(payload: CameraCreate, db: AsyncSession = Depends(get_db
 
 @router.get("/{camera_id}", response_model=CameraResponse)
 async def get_camera(camera_id: str, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Camera).where(Camera.id == camera_id).options(selectinload(Camera.subscriptions)))
+    result = await db.execute(
+        select(Camera)
+        .where(Camera.id == camera_id)
+        .options(
+            selectinload(Camera.subscriptions).selectinload(CameraSubscriptionModel.obs_scene_options),
+        )
+    )
     camera = result.scalar_one_or_none()
     if not camera:
         raise HTTPException(status_code=404, detail="Camera not found")
@@ -127,7 +164,13 @@ async def update_camera(
     payload: CameraUpdate,
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(Camera).where(Camera.id == camera_id).options(selectinload(Camera.subscriptions)))
+    result = await db.execute(
+        select(Camera)
+        .where(Camera.id == camera_id)
+        .options(
+            selectinload(Camera.subscriptions).selectinload(CameraSubscriptionModel.obs_scene_options),
+        )
+    )
     camera = result.scalar_one_or_none()
     if not camera:
         raise HTTPException(status_code=404, detail="Camera not found")
@@ -147,13 +190,26 @@ async def update_camera(
 
     if payload.subscriptions is not None:
         # Replace all subscriptions
+        existing_ids = (
+            await db.execute(
+                select(CameraSubscriptionModel.id).where(
+                    CameraSubscriptionModel.camera_id == camera_id
+                )
+            )
+        ).scalars().all()
+        if existing_ids:
+            await db.execute(
+                CameraSubscriptionSceneOption.__table__.delete().where(
+                    CameraSubscriptionSceneOption.subscription_id.in_(existing_ids)
+                )
+            )
         await db.execute(
             CameraSubscriptionModel.__table__.delete().where(
                 CameraSubscriptionModel.camera_id == camera_id
             )
         )
         for sub in payload.subscriptions:
-            db.add(CameraSubscriptionModel(
+            sub_model = CameraSubscriptionModel(
                 camera_id=camera.id,
                 event_type=sub.event_type,
                 mode=sub.mode,
@@ -163,12 +219,26 @@ async def update_camera(
                 delay_ms=sub.delay_ms,
                 enabled=sub.enabled,
                 conditions=sub.conditions,
-            ))
+            )
+            db.add(sub_model)
+            await db.flush()
+            for option in sub.obs_scene_options:
+                db.add(CameraSubscriptionSceneOption(
+                    subscription_id=sub_model.id,
+                    scene_name=option.scene_name,
+                    weight=option.weight,
+                ))
 
     await db.commit()
     
     # Eager load updated subscriptions
-    result = await db.execute(select(Camera).where(Camera.id == camera_id).options(selectinload(Camera.subscriptions)))
+    result = await db.execute(
+        select(Camera)
+        .where(Camera.id == camera_id)
+        .options(
+            selectinload(Camera.subscriptions).selectinload(CameraSubscriptionModel.obs_scene_options),
+        )
+    )
     camera = result.scalar_one()
 
     # Re-register subscriber with new config

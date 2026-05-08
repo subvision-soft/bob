@@ -58,6 +58,9 @@ class Camera(Base):
     subscriptions: Mapped[List["CameraSubscriptionModel"]] = relationship(
         back_populates="camera", cascade="all, delete-orphan"
     )
+    obs_scene_options: Mapped[List["CameraObsSceneOption"]] = relationship(
+        back_populates="camera", cascade="all, delete-orphan"
+    )
 
 
 class CameraSubscriptionModel(Base):
@@ -76,6 +79,38 @@ class CameraSubscriptionModel(Base):
     conditions: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON)
 
     camera: Mapped["Camera"] = relationship(back_populates="subscriptions")
+    obs_scene_options: Mapped[List["CameraSubscriptionSceneOption"]] = relationship(
+        back_populates="subscription", cascade="all, delete-orphan"
+    )
+
+
+class CameraObsSceneOption(Base):
+    __tablename__ = "camera_obs_scene_options"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    camera_id: Mapped[str] = mapped_column(ForeignKey("cameras.id"), nullable=False)
+
+    scene_name: Mapped[str] = mapped_column(String(256), nullable=False)
+    weight: Mapped[float] = mapped_column(Float, default=1.0)
+
+    camera: Mapped["Camera"] = relationship(back_populates="obs_scene_options")
+
+
+class CameraSubscriptionSceneOption(Base):
+    __tablename__ = "camera_subscription_scene_options"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    subscription_id: Mapped[str] = mapped_column(
+        ForeignKey("camera_subscriptions.id"),
+        nullable=False,
+    )
+
+    scene_name: Mapped[str] = mapped_column(String(256), nullable=False)
+    weight: Mapped[float] = mapped_column(Float, default=1.0)
+
+    subscription: Mapped["CameraSubscriptionModel"] = relationship(
+        back_populates="obs_scene_options"
+    )
 
 
 # ── Competition Rules ─────────────────────────────────────────────────────────

@@ -167,13 +167,9 @@ _obs_client: Optional[OBSClient] = None
 
 def get_obs_client() -> OBSClient:
     global _obs_client
-    print("HELLO2")
     from backend.core.settings import get_settings
     s = get_settings()
-    print(f"URL: {s.obs_websocket_url}")
-    print(f"Password: {s.obs_websocket_password}")
     if _obs_client is None:
         log.info("obs_client.initializing", url=s.obs_websocket_url, password=s.obs_websocket_password)
-
         _obs_client = OBSClient(url=s.obs_websocket_url, password=s.obs_websocket_password)
     return _obs_client

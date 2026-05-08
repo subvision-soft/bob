@@ -16,7 +16,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 
 from backend.api import cameras, config, events, monitoring, obs, rules
 from backend.core.settings import get_settings
-from backend.database import init_db
+from backend.database import init_db, migrate_subscription_scene_options
 from backend.websocket.manager import ws_manager
 from backend.workers.decision_worker import DecisionWorker
 from backend.workers.event_poller_worker import EventPollerWorker
@@ -37,6 +37,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # ── Database ──────────────────────────────────────────────────────
     await init_db()
+    await migrate_subscription_scene_options()
 
     # ── Background workers ────────────────────────────────────────────
     event_poller = EventPollerWorker()

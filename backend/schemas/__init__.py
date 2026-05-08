@@ -19,6 +19,12 @@ class CameraSubscriptionSchema(BaseModel):
     delay_ms: int = Field(0, ge=0)
     enabled: bool = True
     conditions: Optional[Dict[str, Any]] = None
+    obs_scene_options: List["CameraObsSceneOptionSchema"] = []
+
+
+class CameraObsSceneOptionSchema(BaseModel):
+    scene_name: str = Field(..., min_length=1, max_length=256)
+    weight: float = Field(1.0, gt=0)
 
 
 class CameraCreate(BaseModel):

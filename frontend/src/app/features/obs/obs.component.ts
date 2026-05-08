@@ -162,7 +162,7 @@ export class ObsComponent implements OnInit {
     private api: ApiService,
     public store: AppStore,
     private msg: MessageService,
-  ) {}
+  ) { }
 
   ngOnInit(): void {
     this.refreshStatus();
@@ -176,6 +176,11 @@ export class ObsComponent implements OnInit {
     this.connecting.set(true);
     this.api.connectObs(this.obsUrl, this.obsPassword).subscribe({
       next: () => {
+        // Save connection settings to localStorage
+        localStorage.setItem('obs_settings', JSON.stringify({
+          url: this.obsUrl,
+          password: this.obsPassword,
+        }));
         this.msg.add({ severity: 'success', summary: 'Connected', detail: 'OBS connected successfully' });
         this.refreshStatus();
         this.connecting.set(false);

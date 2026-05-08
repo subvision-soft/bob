@@ -132,6 +132,7 @@ class CameraEventSubscriber:
             self._ctx.pending_transition = True
             self._ctx.pending_mode = ReactionMode.PREPARE
             self._ctx.pending_since = time.monotonic()
+            self._ctx.pending_event_type = event.type
             log.info("camera_subscriber.prepare_signal", camera_id=self.camera_id)
 
         elif sub.mode == ReactionMode.SWITCH_IF_HIGH_SCORE:
@@ -139,12 +140,14 @@ class CameraEventSubscriber:
             self._ctx.pending_transition = True
             self._ctx.pending_mode = ReactionMode.SWITCH_IF_HIGH_SCORE
             self._ctx.pending_since = time.monotonic()
+            self._ctx.pending_event_type = event.type
 
         elif sub.mode == ReactionMode.FORCE_SWITCH:
             if not self._ctx.is_in_cooldown:
                 self._ctx.pending_transition = True
                 self._ctx.pending_mode = ReactionMode.FORCE_SWITCH
                 self._ctx.pending_since = time.monotonic()
+                self._ctx.pending_event_type = event.type
                 log.info("camera_subscriber.force_switch_signal", camera_id=self.camera_id)
             else:
                 log.info(
@@ -172,6 +175,10 @@ class CameraSubscriberRegistry:
 
     def get_all_contexts(self) -> list[CameraContext]:
         return [s.context for s in self._subscribers.values()]
+
+    @property
+    def subscriber_ids(self) -> list[str]:
+        return list(self._subscribers.keys())
 
     async def register(self, context: CameraContext) -> CameraEventSubscriber:
         """Register a new camera subscriber and start its processing loop."""

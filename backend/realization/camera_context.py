@@ -41,6 +41,13 @@ class CameraSubscription:
     delay_ms: int = 0                       # delay before triggering action
     enabled: bool = True
     conditions: dict = field(default_factory=dict)  # future: condition expressions
+    obs_scene_options: List["ObsSceneOption"] = field(default_factory=list)
+
+
+@dataclass
+class ObsSceneOption:
+    scene_name: str
+    weight: float = 1.0
 
 
 @dataclass
@@ -69,6 +76,7 @@ class CameraContext:
     pending_transition: bool = False
     pending_mode: Optional[ReactionMode] = None
     pending_since: float = 0.0
+    pending_event_type: Optional[str] = None
 
     # ── Air time tracking ────────────────────────────────────────────
     is_on_air: bool = False
@@ -81,6 +89,7 @@ class CameraContext:
 
     # ── Subscriptions ────────────────────────────────────────────────
     subscriptions: List[CameraSubscription] = field(default_factory=list)
+
 
     @property
     def is_in_cooldown(self) -> bool:

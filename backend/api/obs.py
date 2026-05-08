@@ -22,10 +22,17 @@ async def obs_status():
 
 @router.post("/connect", status_code=200)
 async def obs_connect(payload: OBSConnectRequest):
-    print("HELLO")
-    client = get_obs_client()
     try:
+        # Create a new OBS client with the provided credentials
+        from backend.obs.client import OBSClient, _obs_client
+        import backend.obs.client as obs_module
+        
+        client = OBSClient(url=payload.url, password=payload.password)
         await client.connect()
+        
+        # Replace the global client with the new connected one
+        obs_module._obs_client = client
+        
         return {"status": "connected"}
     except Exception as e:
         raise HTTPException(status_code=503, detail=str(e))

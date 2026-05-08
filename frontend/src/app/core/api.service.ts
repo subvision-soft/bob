@@ -20,6 +20,11 @@ export interface Camera {
   subscriptions: CameraSubscription[];
 }
 
+export interface CameraObsSceneOption {
+  scene_name: string;
+  weight: number;
+}
+
 export interface CameraSubscription {
   event_type: string;
   mode: 'INFORM_ONLY' | 'PREPARE' | 'SWITCH_IF_HIGH_SCORE' | 'FORCE_SWITCH';
@@ -29,6 +34,7 @@ export interface CameraSubscription {
   delay_ms: number;
   enabled: boolean;
   conditions?: Record<string, unknown>;
+  obs_scene_options: CameraObsSceneOption[];
 }
 
 export interface CameraContext {
@@ -85,7 +91,7 @@ export interface HealthStatus {
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
-  constructor(private http: HttpClient) {}
+  constructor(private http: HttpClient) { }
 
   // ── Cameras ──────────────────────────────────────────────────────
   getCameras(): Observable<Camera[]> {
@@ -149,6 +155,9 @@ export class ApiService {
   }
   setObsScene(sceneName: string, target: 'program' | 'preview' = 'program'): Observable<unknown> {
     return this.http.post(`${API_BASE}/obs/scene`, { scene_name: sceneName, target });
+  }
+  getObsScenes(): Observable<string[]> {
+    return this.http.get<string[]>(`${API_BASE}/obs/scenes`);
   }
 
   // ── Monitoring ───────────────────────────────────────────────────

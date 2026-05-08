@@ -16,7 +16,7 @@ import { TooltipModule } from 'primeng/tooltip';
 import { MessageService } from 'primeng/api';
 import { ToastModule } from 'primeng/toast';
 
-import { ApiService, Camera, CameraSubscription } from '../../core/api.service';
+import { ApiService, Camera, CameraObsSceneOption, CameraSubscription } from '../../core/api.service';
 import { AppStore } from '../../store/app.store';
 
 const REACTION_MODES = [
@@ -60,6 +60,7 @@ const EVENT_TYPES = [
             <th>Name</th>
             <th>Source</th>
             <th>Subscriptions</th>
+            <th>Triggers</th>
             <th>Status</th>
             <th>Actions</th>
           </tr>
@@ -90,6 +91,26 @@ const EVENT_TYPES = [
               </div>
             </td>
             <td>
+              <div class="trigger-list">
+                @for (sub of cam.subscriptions; track sub.event_type) {
+                  <div class="trigger-item">
+                    <span class="text-xs text-muted">{{ sub.event_type }}</span>
+                    <div class="scene-chips">
+                      @for (scene of sub.obs_scene_options; track scene.scene_name) {
+                        <span class="scene-chip">{{ scene.scene_name }}</span>
+                      }
+                      @if (sub.obs_scene_options.length === 0) {
+                        <span class="text-muted text-xs">None</span>
+                      }
+                    </div>
+                  </div>
+                }
+                @if (cam.subscriptions.length === 0) {
+                  <span class="text-muted text-xs">None</span>
+                }
+              </div>
+            </td>
+            <td>
               <p-tag [value]="cam.enabled ? 'ENABLED' : 'DISABLED'"
                      [severity]="cam.enabled ? 'success' : 'danger'" />
             </td>
@@ -104,7 +125,7 @@ const EVENT_TYPES = [
           </tr>
         </ng-template>
         <ng-template pTemplate="emptymessage">
-          <tr><td colspan="6" class="text-center p-4 text-muted">No cameras configured yet</td></tr>
+          <tr><td colspan="7" class="text-center p-4 text-muted">No cameras configured yet</td></tr>
         </ng-template>
       </p-table>
 
@@ -173,6 +194,43 @@ const EVENT_TYPES = [
                 <p-inputSwitch formControlName="enabled" pTooltip="Enable subscription" />
                 <p-button icon="pi pi-trash" severity="danger" [text]="true" size="small"
                           (onClick)="removeSubscription(i)" />
+                <div class="sub-scenes" formArrayName="obs_scene_options">
+                  <div class="sub-scenes-header">
+                    <span class="text-xs text-muted">OBS Scenes</span>
+                    @if (!obsConnected) {
+                      <span class="text-muted text-xs">Connect OBS to load scenes.</span>
+                    }
+                  </div>
+                  <div class="sub-scenes-list">
+                    @for (scene of getSubSceneArray(i).controls; track j; let j = $index) {
+                      <div [formGroupName]="j" class="sub-scene-row">
+                        <p-dropdown
+                          formControlName="scene_name"
+                          [options]="obsSceneSelectOptionsFor(i)"
+                          optionLabel="label"
+                          optionValue="value"
+                          placeholder="Select scene"
+                          [disabled]="!obsConnected || obsSceneSelectOptionsFor(i).length === 0"
+                        />
+                        <input pInputText type="number" min="0.001" step="0.1" formControlName="weight" />
+                        <p-button icon="pi pi-trash" severity="danger" [text]="true" size="small"
+                                  (onClick)="removeSubScene(i, j)" />
+                      </div>
+                    }
+                    @if (getSubSceneArray(i).controls.length === 0) {
+                      <span class="text-muted text-xs">No scene options (no OBS switch)</span>
+                    }
+                  </div>
+                  <p-button
+                    icon="pi pi-plus"
+                    label="Add OBS Scene"
+                    severity="secondary"
+                    size="small"
+                    [text]="true"
+                    [disabled]="!obsConnected || obsSceneSelectOptionsFor(i).length === 0"
+                    (onClick)="addSubScene(i)"
+                  />
+                </div>
               </div>
             }
           </div>
@@ -227,6 +285,13 @@ const EVENT_TYPES = [
       &.mode-switch_if_high_score { background: rgba(245,158,11,0.2); color: #fbbf24; }
       &.mode-prepare         { background: rgba(59,130,246,0.2); color: #93c5fd; }
     }
+    .trigger-list { display: flex; flex-direction: column; gap: 0.35rem; }
+    .trigger-item { display: flex; flex-direction: column; gap: 0.2rem; }
+    .scene-chips { display: flex; flex-wrap: wrap; gap: 3px; }
+    .scene-chip {
+      font-size: 0.62rem; padding: 2px 5px; border-radius: 3px; font-weight: 600;
+      background: rgba(16,185,129,0.12); color: #6ee7b7;
+    }
 
     .action-btns { display: flex; gap: 4px; }
 
@@ -248,6 +313,14 @@ const EVENT_TYPES = [
       align-items: center; padding: 0.5rem; background: var(--svs-bg-elevated);
       border-radius: var(--svs-radius-sm); border: 1px solid var(--svs-border);
     }
+    .sub-scenes { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 0.4rem; }
+    .sub-scenes-header { display: flex; gap: 0.5rem; align-items: center; }
+    .sub-scenes-list { display: flex; flex-direction: column; gap: 0.4rem; }
+    .sub-scene-row {
+      display: grid; grid-template-columns: 1fr 120px auto; gap: 0.5rem;
+      align-items: center; padding: 0.4rem; background: var(--svs-bg-card);
+      border-radius: var(--svs-radius-sm); border: 1px solid var(--svs-border);
+    }
     .sub-priority { display: flex; flex-direction: column; gap: 4px; }
     .text-xs { font-size: 0.72rem; }
     .text-sm { font-size: 0.8rem; }
@@ -258,6 +331,7 @@ const EVENT_TYPES = [
     :host ::ng-deep .svs-table { background: var(--svs-bg-card); }
     :host ::ng-deep .sub-event-select .p-dropdown { width: 100%; }
     :host ::ng-deep .sub-mode-select .p-dropdown { width: 100%; }
+    :host ::ng-deep .sub-scene-row .p-dropdown { width: 100%; }
   `],
 })
 export class CamerasComponent implements OnInit {
@@ -284,7 +358,7 @@ export class CamerasComponent implements OnInit {
     private fb: FormBuilder,
     private msg: MessageService,
     public store: AppStore,
-  ) {}
+  ) { }
 
   ngOnInit(): void {
     this._initForm();
@@ -313,11 +387,46 @@ export class CamerasComponent implements OnInit {
       cooldown_ms: [sub?.cooldown_ms ?? 0],
       delay_ms: [sub?.delay_ms ?? 0],
       enabled: [sub?.enabled ?? true],
+      obs_scene_options: this.fb.array(
+        (sub?.obs_scene_options ?? []).map(o => this._subSceneGroup(o))
+      ),
     });
   }
 
   get subscriptionsArray(): FormArray {
     return this.cameraForm.get('subscriptions') as FormArray;
+  }
+
+  get obsConnected(): boolean {
+    return this.store.obsStatus()?.state === 'CONNECTED';
+  }
+
+  getSubSceneArray(subIndex: number): FormArray {
+    return this.subscriptionsArray.at(subIndex).get('obs_scene_options') as FormArray;
+  }
+
+  obsSceneSelectOptionsFor(subIndex: number): { label: string; value: string }[] {
+    const scenes = this.store.obsStatus()?.scenes ?? [];
+    const existing = this.getSubSceneArray(subIndex)?.controls
+      .map(ctrl => ctrl.get('scene_name')?.value)
+      .filter((v): v is string => !!v);
+    const merged = [...new Set([...(scenes ?? []), ...(existing ?? [])])];
+    return merged.map(scene => ({ label: scene, value: scene }));
+  }
+
+  addSubScene(subIndex: number): void {
+    this.getSubSceneArray(subIndex).push(this._subSceneGroup());
+  }
+
+  removeSubScene(subIndex: number, sceneIndex: number): void {
+    this.getSubSceneArray(subIndex).removeAt(sceneIndex);
+  }
+
+  private _subSceneGroup(option?: Partial<CameraObsSceneOption>) {
+    return this.fb.group({
+      scene_name: [option?.scene_name ?? '', Validators.required],
+      weight: [option?.weight ?? 1, [Validators.required, Validators.min(0.0001)]],
+    });
   }
 
   addSubscription(): void {
@@ -338,12 +447,14 @@ export class CamerasComponent implements OnInit {
   openCreateDialog(): void {
     this.editingCamera = null;
     this._initForm();
+    this._refreshObsScenes();
     this.dialogVisible = true;
   }
 
   openEditDialog(camera: Camera): void {
     this.editingCamera = camera;
     this._initForm(camera);
+    this._refreshObsScenes();
     this.dialogVisible = true;
   }
 
@@ -378,6 +489,23 @@ export class CamerasComponent implements OnInit {
     this.api.deleteCamera(id).subscribe(() => {
       this.msg.add({ severity: 'success', summary: 'Deleted', detail: 'Camera removed' });
       this.loadCameras();
+    });
+  }
+
+  private _refreshObsScenes(): void {
+    if (!this.obsConnected) {
+      return;
+    }
+    this.api.getObsScenes().subscribe({
+      next: scenes => {
+        const status = this.store.obsStatus();
+        if (status) {
+          this.store.updateObsStatus({ ...status, scenes });
+        }
+      },
+      error: err => {
+        this.msg.add({ severity: 'warn', summary: 'OBS', detail: err?.message ?? 'Unable to load scenes' });
+      },
     });
   }
 }

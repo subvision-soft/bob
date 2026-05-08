@@ -1,0 +1,9 @@
+**/monitoring/
+subvision.db
+.continue/
+**/node_modules/
+**/.vscode/
+**/frontend/.angular/
+**/.env
+subvision.db
+**/__pycache__

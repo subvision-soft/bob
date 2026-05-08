@@ -57,7 +57,7 @@ interface SystemSettings {
                 <label>API Base URL</label>
                 <span>HTTP endpoint of the external competition event API</span>
               </div>
-              <input pInputText [(ngModel)]="settings.external_api_url"
+              <input pInputText [(ngModel)]="settings.external_api_url" (change)="onSettingChange()"
                      placeholder="http://localhost:9000/api" class="setting-input" />
             </div>
             <div class="setting-row">
@@ -66,7 +66,7 @@ interface SystemSettings {
                 <span>How often to check for new events (ms). Lower = faster reaction, higher = less load.</span>
               </div>
               <div class="slider-field">
-                <p-slider [(ngModel)]="settings.poll_interval_ms" [min]="50" [max]="1000" [step]="50" />
+                <p-slider [(ngModel)]="settings.poll_interval_ms" (change)="onSettingChange()" [min]="50" [max]="1000" [step]="50" />
                 <span class="slider-val">{{ settings.poll_interval_ms }}ms</span>
               </div>
             </div>
@@ -85,7 +85,7 @@ interface SystemSettings {
                 <span>How often the decision engine evaluates camera scores (ms). Default: 50ms.</span>
               </div>
               <div class="slider-field">
-                <p-slider [(ngModel)]="settings.decision_cycle_ms" [min]="20" [max]="500" [step]="10" />
+               <p-slider [(ngModel)]="settings.decision_cycle_ms" (change)="onSettingChange()" [min]="20" [max]="500" [step]="10" />
                 <span class="slider-val">{{ settings.decision_cycle_ms }}ms</span>
               </div>
             </div>
@@ -95,7 +95,7 @@ interface SystemSettings {
                 <span>Minimum time a camera must stay on air before switching (anti-zap). Default: 2000ms.</span>
               </div>
               <div class="slider-field">
-                <p-slider [(ngModel)]="settings.min_display_ms" [min]="500" [max]="10000" [step]="500" />
+                <p-slider [(ngModel)]="settings.min_display_ms" (change)="onSettingChange()" [min]="500" [max]="10000" [step]="500" />
                 <span class="slider-val">{{ settings.min_display_ms }}ms</span>
               </div>
             </div>
@@ -105,7 +105,7 @@ interface SystemSettings {
                 <span>Post-switch cooldown applied to the switched-from camera. Default: 3000ms.</span>
               </div>
               <div class="slider-field">
-                <p-slider [(ngModel)]="settings.default_cooldown_ms" [min]="0" [max]="10000" [step]="500" />
+                <p-slider [(ngModel)]="settings.default_cooldown_ms" (change)="onSettingChange()" [min]="0" [max]="10000" [step]="500" />
                 <span class="slider-val">{{ settings.default_cooldown_ms }}ms</span>
               </div>
             </div>
@@ -115,7 +115,7 @@ interface SystemSettings {
                 <span>Minimum interest score required to trigger a non-forced switch. Default: 60.</span>
               </div>
               <div class="slider-field">
-                <p-slider [(ngModel)]="settings.score_threshold" [min]="0" [max]="100" [step]="5" />
+                <p-slider [(ngModel)]="settings.score_threshold" (change)="onSettingChange()" [min]="0" [max]="100" [step]="5" />
                 <span class="slider-val">{{ settings.score_threshold }}</span>
               </div>
             </div>
@@ -133,14 +133,14 @@ interface SystemSettings {
                 <label>Enable OBS Integration</label>
                 <span>Toggle automatic OBS scene switching.</span>
               </div>
-              <p-inputSwitch [(ngModel)]="settings.obs_enabled" />
+              <p-inputSwitch [(ngModel)]="settings.obs_enabled" (change)="onSettingChange()" />
             </div>
             <div class="setting-row">
               <div class="setting-info">
                 <label>OBS WebSocket URL</label>
                 <span>obs-websocket v5 endpoint. Default: ws://localhost:4455</span>
               </div>
-              <input pInputText [(ngModel)]="settings.obs_url"
+              <input pInputText [(ngModel)]="settings.obs_url" (change)="onSettingChange()"
                      placeholder="ws://localhost:4455" class="setting-input" />
             </div>
             <div class="setting-row">
@@ -148,7 +148,7 @@ interface SystemSettings {
                 <label>OBS Password</label>
                 <span>Leave blank if no password is set in OBS.</span>
               </div>
-              <input pInputText type="password" [(ngModel)]="settings.obs_password"
+              <input pInputText type="password" [(ngModel)]="settings.obs_password" (change)="onSettingChange()"
                      placeholder="(blank = no password)" class="setting-input" />
             </div>
           </div>
@@ -166,7 +166,7 @@ interface SystemSettings {
                 <span>How often camera JPEG previews are pushed to the browser (ms). Default: 500ms.</span>
               </div>
               <div class="slider-field">
-                <p-slider [(ngModel)]="settings.snapshot_interval_ms" [min]="100" [max]="2000" [step]="100" />
+                <p-slider [(ngModel)]="settings.snapshot_interval_ms" (change)="onSettingChange()" [min]="100" [max]="2000" [step]="100" />
                 <span class="slider-val">{{ settings.snapshot_interval_ms }}ms</span>
               </div>
             </div>
@@ -184,7 +184,7 @@ interface SystemSettings {
                 <label>Debug Mode</label>
                 <span>Enable verbose logging and SQLAlchemy query logging.</span>
               </div>
-              <p-inputSwitch [(ngModel)]="settings.debug" />
+              <p-inputSwitch [(ngModel)]="settings.debug" (change)="onSettingChange()" />
             </div>
             <div class="setting-row">
               <div class="setting-info">
@@ -197,12 +197,21 @@ interface SystemSettings {
           </div>
         </p-accordionTab>
 
+
       </p-accordion>
+
+      <!-- Action buttons -->
+      <div class="action-buttons">
+        <p-button label="Save Settings" icon="pi pi-save" [loading]="saving()" [disabled]="!hasChanges()"
+                  (onClick)="saveSettings()" />
+        <p-button label="Reset Changes" icon="pi pi-undo" severity="secondary" [disabled]="!hasChanges()"
+                  (onClick)="resetSettings()" />
+      </div>
 
       <!-- Save notice -->
       <div class="save-notice">
         <i class="pi pi-info-circle"></i>
-        <span>Settings changes are stored in environment variables / <code>.env</code> file and require a backend restart to take effect.</span>
+        <span>Settings are now saved to the database. Some settings (OBS URL, decision cycle, etc.) take effect immediately. Others may require a backend restart.</span>
       </div>
 
     </div>
@@ -237,12 +246,16 @@ interface SystemSettings {
     :host ::ng-deep .p-accordion-header-link { background: var(--svs-bg-elevated) !important; border-color: var(--svs-border) !important; }
     :host ::ng-deep .p-accordion-content { background: var(--svs-bg-card) !important; border-color: var(--svs-border) !important; }
 
+    .action-buttons {
+      display: flex; gap: 0.5rem; margin-top: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid var(--svs-border);
+    }
+
     .save-notice {
       display: flex; align-items: center; gap: 0.5rem;
-      background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.3);
+      background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.3);
       border-radius: var(--svs-radius-sm); padding: 0.6rem 1rem; font-size: 0.78rem;
       color: var(--svs-text-secondary);
-      i { color: var(--svs-warning); }
+      i { color: var(--svs-success); }
       code { font-family: var(--svs-font-mono); color: var(--svs-text-primary); }
     }
   `],
@@ -262,12 +275,89 @@ export class SettingsComponent implements OnInit {
     debug: false,
   };
 
+  originalSettings: SystemSettings = { ...this.settings };
+  saving = signal(false);
+  hasChanges = signal(false);
+
   constructor(
     private api: ApiService,
     private msg: MessageService,
-  ) {}
+  ) { }
 
-  ngOnInit(): void {}
+  ngOnInit(): void {
+    this.loadSettings();
+  }
+
+  loadSettings(): void {
+    this.api.getSettings().subscribe({
+      next: (response) => {
+        if (response.settings) {
+          // Map backend field names to UI field names
+          const backendSettings = response.settings as Record<string, unknown>;
+          this.settings = {
+            external_api_url: String(backendSettings['external_api_url'] || this.settings.external_api_url),
+            poll_interval_ms: Number(backendSettings['external_api_poll_interval_ms'] || this.settings.poll_interval_ms),
+            obs_url: String(backendSettings['obs_websocket_url'] || this.settings.obs_url),
+            obs_password: String(backendSettings['obs_websocket_password'] || this.settings.obs_password),
+            decision_cycle_ms: Number(backendSettings['decision_cycle_ms'] || this.settings.decision_cycle_ms),
+            min_display_ms: Number(backendSettings['min_display_duration_ms'] || this.settings.min_display_ms),
+            default_cooldown_ms: Number(backendSettings['default_cooldown_ms'] || this.settings.default_cooldown_ms),
+            score_threshold: Number(backendSettings['score_threshold_switch'] || this.settings.score_threshold),
+            snapshot_interval_ms: Number(backendSettings['video_snapshot_interval_ms'] || this.settings.snapshot_interval_ms),
+            obs_enabled: Boolean(backendSettings['obs_enabled']) || this.settings.obs_enabled,
+            debug: Boolean(backendSettings['debug']) || this.settings.debug,
+          };
+          this.originalSettings = { ...this.settings };
+          this.hasChanges.set(false);
+        }
+      },
+      error: (err) => {
+        this.msg.add({ severity: 'error', summary: 'Load Failed', detail: 'Could not load settings from server' });
+        console.error('Failed to load settings:', err);
+      },
+    });
+  }
+
+  saveSettings(): void {
+    this.saving.set(true);
+
+    // Map UI field names to backend field names
+    const updates: Record<string, { value: unknown; value_type: string }> = {
+      'external_api_url': { value: this.settings.external_api_url, value_type: 'string' },
+      'external_api_poll_interval_ms': { value: this.settings.poll_interval_ms, value_type: 'int' },
+      'obs_websocket_url': { value: this.settings.obs_url, value_type: 'string' },
+      'obs_websocket_password': { value: this.settings.obs_password, value_type: 'string' },
+      'decision_cycle_ms': { value: this.settings.decision_cycle_ms, value_type: 'int' },
+      'min_display_duration_ms': { value: this.settings.min_display_ms, value_type: 'int' },
+      'default_cooldown_ms': { value: this.settings.default_cooldown_ms, value_type: 'int' },
+      'score_threshold_switch': { value: this.settings.score_threshold, value_type: 'float' },
+      'video_snapshot_interval_ms': { value: this.settings.snapshot_interval_ms, value_type: 'int' },
+      'obs_enabled': { value: this.settings.obs_enabled, value_type: 'bool' },
+      'debug': { value: this.settings.debug, value_type: 'bool' },
+    };
+
+    this.api.updateSettings(updates).subscribe({
+      next: () => {
+        this.msg.add({ severity: 'success', summary: 'Saved', detail: 'Settings have been saved. Some changes may require backend restart.' });
+        this.originalSettings = { ...this.settings };
+        this.hasChanges.set(false);
+        this.saving.set(false);
+      },
+      error: (err) => {
+        this.msg.add({ severity: 'error', summary: 'Save Failed', detail: err.error?.detail || 'Could not save settings' });
+        this.saving.set(false);
+      },
+    });
+  }
+
+  resetSettings(): void {
+    this.settings = { ...this.originalSettings };
+    this.hasChanges.set(false);
+  }
+
+  onSettingChange(): void {
+    this.hasChanges.set(JSON.stringify(this.settings) !== JSON.stringify(this.originalSettings));
+  }
 
   exportConfig(): void {
     this.api.exportConfig().subscribe(data => {

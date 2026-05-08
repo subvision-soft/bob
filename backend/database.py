@@ -66,3 +66,8 @@ async def migrate_subscription_scene_options() -> None:
 async def get_db() -> AsyncSession:
     async with AsyncSessionLocal() as session:
         yield session
+
+
+def get_db_session() -> AsyncSession:
+    """Get a database session instance (not a generator)."""
+    return AsyncSessionLocal()

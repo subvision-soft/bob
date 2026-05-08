@@ -14,9 +14,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from backend.api import cameras, config, events, monitoring, obs, rules
+from backend.api import cameras, config, events, monitoring, obs, rules, settings as settings_api
 from backend.core.settings import get_settings
-from backend.database import init_db, migrate_subscription_scene_options
+from backend.core.settings_service import SettingsService, set_settings_service
+from backend.database import init_db, migrate_subscription_scene_options, get_db_session
 from backend.websocket.manager import ws_manager
 from backend.workers.decision_worker import DecisionWorker
 from backend.workers.event_poller_worker import EventPollerWorker
@@ -38,6 +39,29 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # ── Database ──────────────────────────────────────────────────────
     await init_db()
     await migrate_subscription_scene_options()
+
+    # ── Settings Service ──────────────────────────────────────────────
+    db_session = get_db_session()
+    service = SettingsService(db_session)
+    
+    # Initialize default settings if table is empty
+    default_settings = {
+        "external_api_url": (settings.external_api_url, "string", "External competition API base URL"),
+        "external_api_poll_interval_ms": (settings.external_api_poll_interval_ms, "int", "Poll interval for external API (ms)"),
+        "obs_websocket_url": (settings.obs_websocket_url, "string", "OBS WebSocket URL"),
+        "obs_websocket_password": (settings.obs_websocket_password, "string", "OBS WebSocket password"),
+        "obs_enabled": (settings.obs_enabled, "bool", "Enable OBS integration"),
+        "decision_cycle_ms": (settings.decision_cycle_ms, "int", "Decision engine cycle time (ms)"),
+        "min_display_duration_ms": (settings.min_display_duration_ms, "int", "Minimum display duration before switch (ms)"),
+        "default_cooldown_ms": (settings.default_cooldown_ms, "int", "Default post-switch cooldown (ms)"),
+        "score_threshold_switch": (settings.score_threshold_switch, "float", "Score threshold for SWITCH_IF_HIGH_SCORE mode"),
+        "video_snapshot_interval_ms": (settings.video_snapshot_interval_ms, "int", "Snapshot push interval (ms)"),
+        "debug": (settings.debug, "bool", "Enable debug logging"),
+    }
+    
+    await service.initialize_defaults(default_settings)
+    await service.load_from_db()
+    set_settings_service(service)
 
     # ── Background workers ────────────────────────────────────────────
     event_poller = EventPollerWorker()
@@ -90,6 +114,7 @@ def create_app() -> FastAPI:
     app.include_router(obs.router, prefix="/api/obs", tags=["obs"])
     app.include_router(config.router, prefix="/api/config", tags=["config"])
     app.include_router(monitoring.router, prefix="/api/monitoring", tags=["monitoring"])
+    app.include_router(settings_api.router, prefix="/api", tags=["settings"])
 
     # ── WebSocket endpoint ────────────────────────────────────────────
     from backend.api.websocket import router as ws_router

@@ -205,7 +205,11 @@ export class ObsComponent implements OnInit {
 
   setScene(scene: string, target: 'program' | 'preview'): void {
     this.api.setObsScene(scene, target).subscribe({
-      next: () => this.msg.add({ severity: 'success', summary: 'Scene Set', detail: `${scene} → ${target}` }),
+      next: () => {
+        this.msg.add({ severity: 'success', summary: 'Scene Set', detail: `${scene} → ${target}` });
+        // Refresh status to show updated scene
+        setTimeout(() => this.refreshStatus(), 100);
+      },
       error: err => this.msg.add({ severity: 'error', summary: 'Error', detail: err.message }),
     });
   }

@@ -170,6 +170,26 @@ export class ApiService {
     });
   }
 
+  // ── Settings ──────────────────────────────────────────────────────
+  getSettings(): Observable<{ status: string; settings: Record<string, unknown> }> {
+    return this.http.get<{ status: string; settings: Record<string, unknown> }>(`${API_BASE}/settings`);
+  }
+  
+  updateSetting(key: string, value: unknown, valueType: string = 'string'): Observable<unknown> {
+    return this.http.put(`${API_BASE}/settings/${key}`, {
+      value: String(value),
+      value_type: valueType,
+    });
+  }
+  
+  updateSettings(updates: Record<string, { value: unknown; value_type: string }>): Observable<unknown> {
+    const payload: Record<string, { value: string; value_type: string }> = {};
+    for (const [key, {value, value_type}] of Object.entries(updates)) {
+      payload[key] = { value: String(value), value_type };
+    }
+    return this.http.put(`${API_BASE}/settings`, payload);
+  }
+
   // ── Config ───────────────────────────────────────────────────────
   exportConfig(): Observable<unknown> {
     return this.http.get(`${API_BASE}/config/export`);

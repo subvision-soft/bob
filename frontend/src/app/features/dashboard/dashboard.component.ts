@@ -12,7 +12,7 @@ import { ProgressBarModule } from 'primeng/progressbar';
 import { ScrollPanelModule } from 'primeng/scrollpanel';
 
 import { AppStore } from '../../store/app.store';
-import { ApiService } from '../../core/api.service';
+import { ApiService, Camera } from '../../core/api.service';
 import { WebSocketService } from '../../core/websocket.service';
 
 @Component({
@@ -48,7 +48,7 @@ import { WebSocketService } from '../../core/websocket.service';
                   class="svs-camera-thumb"
                   [class.on-air]="getCameraContext(camera.id)?.is_on_air"
                   [class.preview]="isPreview(camera.id)"
-                  (click)="manualSwitch(camera.id)"
+                  (click)="manualSwitch(camera)"
                   [pTooltip]="camera.name"
                 >
                   <!-- Snapshot or placeholder -->
@@ -104,8 +104,8 @@ import { WebSocketService } from '../../core/websocket.service';
               <div class="monitor__header">
                 <span class="monitor__dot"></span>
                 <span class="monitor__label">PROGRAM</span>
-                @if (store.programCamera(); as cam) {
-                  <span class="monitor__cam-name">{{ cam.label }}</span>
+                <span class="monitor__cam-name">{{ getProgramLabel() }}</span>
+                @if (store.programCamera()) {
                   <span class="monitor__time">
                     {{ formatDuration(store.globalContext()?.time_on_current_camera_ms ?? 0) }}
                   </span>
@@ -117,7 +117,7 @@ import { WebSocketService } from '../../core/websocket.service';
                 } @else {
                   <div class="monitor__placeholder">
                     <i class="pi pi-video"></i>
-                    <span>{{ store.programCamera()?.label ?? 'No Program' }}</span>
+                    <span>{{ getProgramLabel() }}</span>
                   </div>
                 }
               </div>
@@ -128,9 +128,7 @@ import { WebSocketService } from '../../core/websocket.service';
               <div class="monitor__header">
                 <span class="monitor__dot monitor__dot--green"></span>
                 <span class="monitor__label">PREVIEW</span>
-                @if (store.previewCamera(); as cam) {
-                  <span class="monitor__cam-name">{{ cam.label }}</span>
-                }
+                <span class="monitor__cam-name">{{ getPreviewLabel() }}</span>
               </div>
               <div class="monitor__screen monitor__screen--preview">
                 @if (previewSnap()) {
@@ -138,7 +136,7 @@ import { WebSocketService } from '../../core/websocket.service';
                 } @else {
                   <div class="monitor__placeholder monitor__placeholder--preview">
                     <i class="pi pi-video"></i>
-                    <span>{{ store.previewCamera()?.label ?? 'No Preview' }}</span>
+                    <span>{{ getPreviewLabel() }}</span>
                   </div>
                 }
               </div>
@@ -458,7 +456,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     public store: AppStore,
     private api: ApiService,
     private ws: WebSocketService,
-  ) {}
+  ) { }
 
   ngOnInit(): void {
     // Subscribe to live events from WS
@@ -481,17 +479,23 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   programSnap = computed(() => {
-    const id = this.store.programCamera()?.id;
-    return id ? this.store.cameraSnapshots()[id] : null;
+    const cam = this.store.programCamera();
+    if (cam) return this.store.cameraSnapshots()[cam.id] ?? null;
+    const scene = this.store.obsStatus()?.current_program ?? null;
+    const obsCam = this.resolveCameraByScene(scene);
+    return obsCam ? this.store.cameraSnapshots()[obsCam.id] ?? null : null;
   });
 
   previewSnap = computed(() => {
-    const id = this.store.previewCamera()?.id;
-    return id ? this.store.cameraSnapshots()[id] : null;
+    const cam = this.store.previewCamera();
+    if (cam) return this.store.cameraSnapshots()[cam.id] ?? null;
+    const scene = this.store.obsStatus()?.current_preview ?? null;
+    const obsCam = this.resolveCameraByScene(scene);
+    return obsCam ? this.store.cameraSnapshots()[obsCam.id] ?? null : null;
   });
 
-  manualSwitch(cameraId: string): void {
-    this.api.setObsScene(cameraId, 'program').subscribe();
+  manualSwitch(camera: Camera): void {
+    this.api.setObsScene(camera.obs_scene_name||'', 'program').subscribe();
   }
 
   reloadCameras(): void {
@@ -502,6 +506,31 @@ export class DashboardComponent implements OnInit, OnDestroy {
     const s = Math.floor(ms / 1000);
     const m = Math.floor(s / 60);
     return `${m}:${(s % 60).toString().padStart(2, '0')}`;
+  }
+
+  getProgramLabel(): string {
+    const cam = this.store.programCamera();
+    if (cam) return cam.label;
+    const scene = this.store.obsStatus()?.current_program;
+    const obsCam = this.resolveCameraByScene(scene ?? null);
+    return obsCam?.label ?? scene ?? 'No Program';
+  }
+
+  getPreviewLabel(): string {
+    const cam = this.store.previewCamera();
+    if (cam) return cam.label;
+    const scene = this.store.obsStatus()?.current_preview;
+    const obsCam = this.resolveCameraByScene(scene ?? null);
+    return obsCam?.label ?? scene ?? 'No Preview';
+  }
+
+  private resolveCameraByScene(sceneName: string | null): Camera | null {
+    if (!sceneName) return null;
+    const scene = sceneName.trim();
+    return this.store.cameras().find(c =>
+      c.source_type === 'obs_scene'
+      && (c.obs_scene_name === scene || c.source_url === scene)
+    ) ?? null;
   }
 
   ngOnDestroy(): void {

@@ -127,7 +127,11 @@ class VideoIngestWorker:
 
         async with AsyncSessionLocal() as session:
             result = await session.execute(
-                select(Camera).where(Camera.enabled == True, Camera.source_url.is_not(None))
+                select(Camera).where(
+                    Camera.enabled == True,
+                    Camera.source_type != "obs_scene",
+                    Camera.source_url.is_not(None),
+                )
             )
             cameras = result.scalars().all()
 

@@ -8,10 +8,16 @@ from __future__ import annotations
 import asyncio
 import base64
 import time
+from typing import Dict, Optional
 
 import structlog
 
 from backend.core.settings import get_settings
+from sqlalchemy import select
+
+from backend.database import AsyncSessionLocal
+from backend.models import Camera
+from backend.obs.client import get_obs_client
 from backend.websocket.manager import ws_manager
 from backend.workers.video_ingest_worker import get_all_stats, get_snapshot, _stream_stats
 from backend.realization.camera_subscriber import subscriber_registry
@@ -31,6 +37,35 @@ class SnapshotWorker:
     async def run(self) -> None:
         log.info("snapshot_worker.started")
         tick = 0
+        camera_info: Dict[str, Dict[str, Optional[str]]] = {}
+        last_camera_refresh = 0.0
+        camera_refresh_interval_s = 5.0
+
+        async def _refresh_cameras() -> None:
+            nonlocal camera_info, last_camera_refresh
+            now = time.monotonic()
+            if now - last_camera_refresh < camera_refresh_interval_s:
+                return
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(
+                    select(
+                        Camera.id,
+                        Camera.source_type,
+                        Camera.source_url,
+                        Camera.obs_scene_name,
+                    ).where(Camera.enabled == True)
+                )
+                rows = result.all()
+            camera_info = {
+                cam_id: {
+                    "source_type": source_type,
+                    "source_url": source_url,
+                    "obs_scene_name": obs_scene_name,
+                }
+                for cam_id, source_type, source_url, obs_scene_name in rows
+            }
+            last_camera_refresh = now
+
         try:
             while True:
                 await asyncio.sleep(settings.video_snapshot_interval_ms / 1000.0)
@@ -63,13 +98,40 @@ class SnapshotWorker:
                     })
 
                 # ── JPEG snapshot broadcast ───────────────────────────
-                for ctx in subscriber_registry.get_all_contexts():
-                    jpeg = get_snapshot(ctx.camera_id)
+                await _refresh_cameras()
+                obs_client = get_obs_client()
+                for camera_id, info in camera_info.items():
+                    jpeg = get_snapshot(camera_id)
                     if jpeg:
                         await ws_manager.broadcast({
                             "type": "snapshot",
-                            "camera_id": ctx.camera_id,
+                            "camera_id": camera_id,
                             "data": base64.b64encode(jpeg).decode(),
+                            "ts": time.time(),
+                        })
+                        continue
+
+                    if info.get("source_type") != "obs_scene":
+                        continue
+
+                    scene_name = info.get("obs_scene_name") or info.get("source_url")
+                    if not scene_name or not obs_client.is_connected:
+                        continue
+                    try:
+                        image_data = await obs_client.get_scene_snapshot(scene_name)
+                    except Exception as e:
+                        log.warning(
+                            "snapshot_worker.obs_snapshot_failed",
+                            camera_id=camera_id,
+                            scene_name=scene_name,
+                            error=str(e),
+                        )
+                        continue
+                    if image_data:
+                        await ws_manager.broadcast({
+                            "type": "snapshot",
+                            "camera_id": camera_id,
+                            "data": image_data,
                             "ts": time.time(),
                         })
 

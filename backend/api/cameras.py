@@ -30,7 +30,7 @@ def _model_to_response(camera: Camera) -> CameraResponse:
         label=camera.label,
         source_type=camera.source_type,
         source_url=camera.source_url,
-        obs_scene_name=camera.obs_scene_name,
+        obs_scene_name=camera.name if camera.source_type == "obs_scene" else None,
         enabled=camera.enabled,
         is_active=camera.is_active,
         subscriptions=[

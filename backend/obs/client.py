@@ -76,6 +76,7 @@ class OBSClient:
 
             # Cache scene list
             await self.refresh_scenes()
+            await self._refresh_current_scenes()
 
         except Exception as e:
             self._set_state(OBSConnectionState.ERROR)
@@ -141,7 +142,63 @@ class OBSClient:
         log.debug("obs_client.scenes_refreshed", count=len(self._scenes))
         return self._scenes
 
+    async def _refresh_current_scenes(self) -> None:
+        if not self.is_connected or not self._ws:
+            return
+        try:
+            resp = await asyncio.to_thread(
+                self._ws.call,
+                obs_requests.GetCurrentProgramScene(),
+            )
+            if hasattr(resp, "getSceneName"):
+                self._current_program = resp.getSceneName()
+            elif hasattr(resp, "datain"):
+                self._current_program = (
+                    resp.datain.get("currentProgramSceneName")
+                    or resp.datain.get("sceneName")
+                )
+        except Exception as e:
+            log.warning("obs_client.current_program_failed", error=str(e))
+        try:
+            resp = await asyncio.to_thread(
+                self._ws.call,
+                obs_requests.GetCurrentPreviewScene(),
+            )
+            if hasattr(resp, "getSceneName"):
+                self._current_preview = resp.getSceneName()
+            elif hasattr(resp, "datain"):
+                self._current_preview = (
+                    resp.datain.get("currentPreviewSceneName")
+                    or resp.datain.get("sceneName")
+                )
+        except Exception as e:
+            log.warning("obs_client.current_preview_failed", error=str(e))
+
+    async def get_scene_snapshot(self, scene_name: str) -> Optional[str]:
+        """Return base64 JPEG for a scene (no data: prefix)."""
+        if not self.is_connected or not self._ws:
+            return None
+        resp = await asyncio.to_thread(
+            self._ws.call,
+            obs_requests.GetSourceScreenshot(
+                sourceName=scene_name,
+                imageFormat="jpg",
+            ),
+        )
+        image_data: Optional[str] = None
+        if hasattr(resp, "getImageData"):
+            image_data = resp.getImageData()
+        elif hasattr(resp, "datain"):
+            image_data = resp.datain.get("imageData")
+        if not image_data:
+            return None
+        if image_data.startswith("data:image"):
+            return image_data.split(",", 1)[-1]
+        return image_data
+
     async def get_status(self) -> Dict[str, Any]:
+        if self.is_connected:
+            await self._refresh_current_scenes()
         return {
             "state": self._state,
             "url": self._url,
@@ -158,6 +215,12 @@ class OBSClient:
     def _on_event(self, event: Any) -> None:
         """Receive events from OBS (scene changes, etc.)."""
         event_type = type(event).__name__
+        scene_name = getattr(event, "sceneName", None) or getattr(event, "scene_name", None)
+        if scene_name:
+            if event_type in {"CurrentProgramSceneChanged", "CurrentSceneChanged"}:
+                self._current_program = scene_name
+            elif event_type == "CurrentPreviewSceneChanged":
+                self._current_preview = scene_name
         log.debug("obs_client.event", event_type=event_type)
 
 

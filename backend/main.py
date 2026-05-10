@@ -19,6 +19,7 @@ from backend.core.settings import get_settings
 from backend.core.settings_service import SettingsService, set_settings_service
 from backend.database import init_db, migrate_subscription_scene_options, get_db_session
 from backend.websocket.manager import ws_manager
+from backend.obs.client import get_obs_client
 from backend.workers.decision_worker import DecisionWorker
 from backend.workers.event_poller_worker import EventPollerWorker
 from backend.workers.snapshot_worker import SnapshotWorker
@@ -62,6 +63,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await service.initialize_defaults(default_settings)
     await service.load_from_db()
     set_settings_service(service)
+
+    # ── OBS Auto-Connect ──────────────────────────────────────────────
+    if settings.obs_enabled:
+        try:
+            obs_client = get_obs_client()
+            if not obs_client.is_connected:
+                await obs_client.connect()
+        except Exception as e:
+            log.warning("obs_client.autoconnect_failed", error=str(e))
 
     # ── Background workers ────────────────────────────────────────────
     event_poller = EventPollerWorker()

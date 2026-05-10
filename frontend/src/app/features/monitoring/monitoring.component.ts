@@ -33,18 +33,14 @@ export interface SwitchRecord {
   standalone: true,
   imports: [
     CommonModule, FormsModule,
-    SplitterModule, PanelModule, TableModule, ButtonModule,
+    PanelModule, TableModule, ButtonModule,
     TagModule, BadgeModule, ProgressBarModule, TooltipModule,
     TimelineModule, KnobModule,
   ],
   template: `
     <div class="monitoring-page">
-
-      <p-splitter [panelSizes]="[50, 50]" styleClass="h-full">
-
-        <!-- LEFT: Camera scores + decision engine debug -->
-        <ng-template pTemplate>
-          <div class="monitor-col">
+      <!-- LEFT: Camera scores + decision engine debug -->
+      <div class="svs-card monitor-col">
 
             <div class="svs-section-title">
               <i class="pi pi-chart-bar"></i> CAMERA SCORES (LIVE)
@@ -60,7 +56,7 @@ export interface SwitchRecord {
                       <p-tag value="ON AIR" severity="danger" />
                     }
                     @if (ctx.is_in_cooldown) {
-                      <p-tag value="COOLDOWN" severity="warning" />
+                      <p-tag value="COOLDOWN" severity="warn" />
                     }
                     @if (ctx.pending_mode) {
                       <p-tag [value]="ctx.pending_mode" severity="info" />
@@ -103,11 +99,9 @@ export interface SwitchRecord {
               }
             </div>
           </div>
-        </ng-template>
 
-        <!-- RIGHT: Decision trace + switch history -->
-        <ng-template pTemplate>
-          <div class="monitor-col">
+      <!-- RIGHT: Decision trace + switch history -->
+      <div class="svs-card monitor-col">
 
             <!-- Decision Trace -->
             <div class="svs-section-title">
@@ -184,17 +178,17 @@ export interface SwitchRecord {
               }
             </div>
 
-          </div>
-        </ng-template>
-
-      </p-splitter>
+      </div>
     </div>
   `,
   styles: [`
-    .monitoring-page { height: 100%; display: flex; flex-direction: column; overflow: hidden; }
-    :host ::ng-deep .p-splitter { height: 100% !important; }
+    .monitoring-page { 
+      padding: 1.5rem; height: 100%; display: grid; 
+      grid-template-columns: 1fr 1fr; gap: 1rem; 
+      overflow-y: auto; 
+    }
 
-    .monitor-col { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+    .monitor-col { display: flex; flex-direction: column; height: 100%; overflow: hidden; padding: 1rem; }
 
     /* Scores */
     .scores-list { flex: 1; overflow-y: auto; padding: 6px; display: flex; flex-direction: column; gap: 6px; }

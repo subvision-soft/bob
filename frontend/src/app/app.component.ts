@@ -1,6 +1,6 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
-import { CommonModule } from '@angular/common';
+import {CommonModule, NgOptimizedImage} from '@angular/common';
 import { Subject, takeUntil, interval } from 'rxjs';
 
 import { MenubarModule } from 'primeng/menubar';
@@ -27,6 +27,7 @@ import { AppStore } from './store/app.store';
     TagModule,
     ToastModule,
     ConfirmDialogModule,
+    NgOptimizedImage,
   ],
   providers: [MessageService, ConfirmationService],
   template: `
@@ -35,8 +36,7 @@ import { AppStore } from './store/app.store';
       <!-- ── Top Nav Bar ─────────────────────────────────────────── -->
       <header class="svs-topbar">
         <div class="svs-topbar__brand">
-          <i class="pi pi-video svs-topbar__logo"></i>
-          <span class="svs-topbar__title">Subvision Studio</span>
+          <img class="svs-topbar__logo" ngSrc="../assets/img/logo.svg" width="140" height="32" alt="Logo">
           <span class="svs-topbar__version">v0.1</span>
         </div>
 
@@ -81,7 +81,8 @@ import { AppStore } from './store/app.store';
 
           <!-- Backend health indicator -->
           <div class="svs-status-indicator" [class.connected]="isBackendHealthy()">
-            <i class="pi" [class.pi-server]="isBackendHealthy()" [class.pi-exclamation-triangle]="!isBackendHealthy()"></i>
+            <i class="pi" [class.pi-server]="isBackendHealthy()"
+               [class.pi-exclamation-triangle]="!isBackendHealthy()"></i>
             <span>{{ isBackendHealthy() ? 'Backend' : 'Backend ⚠' }}</span>
           </div>
 
@@ -101,13 +102,13 @@ import { AppStore } from './store/app.store';
 
       <!-- ── Main Content ────────────────────────────────────────── -->
       <main class="svs-content">
-        <router-outlet />
+        <router-outlet/>
       </main>
 
     </div>
 
-    <p-toast position="bottom-right" [life]="4000" />
-    <p-confirmDialog />
+    <p-toast position="bottom-right" [life]="4000"/>
+    <p-confirmDialog/>
   `,
   styles: [`
     .svs-shell {
@@ -121,12 +122,13 @@ import { AppStore } from './store/app.store';
     .svs-topbar {
       display: flex;
       align-items: center;
+      flex-wrap: wrap;
       gap: 1rem;
-      height: 44px;
       min-height: 44px;
+      height: auto;
       background: var(--svs-bg-surface);
       border-bottom: 1px solid var(--svs-border);
-      padding: 0 1rem;
+      padding: 0.5rem 1rem;
       z-index: 100;
     }
 
@@ -136,10 +138,7 @@ import { AppStore } from './store/app.store';
       gap: 0.5rem;
       min-width: 180px;
     }
-    .svs-topbar__logo {
-      color: var(--svs-accent);
-      font-size: 1.1rem;
-    }
+
     .svs-topbar__title {
       font-weight: 700;
       font-size: 0.9rem;
@@ -158,6 +157,7 @@ import { AppStore } from './store/app.store';
     .svs-topbar__nav {
       display: flex;
       align-items: center;
+      flex-wrap: wrap;
       gap: 0.125rem;
       flex: 1;
     }
@@ -166,18 +166,28 @@ import { AppStore } from './store/app.store';
       display: flex;
       align-items: center;
       gap: 0.35rem;
-      padding: 0.35rem 0.7rem;
+      padding: 0.35rem 0.85rem;
       border-radius: var(--svs-radius-sm);
       color: var(--svs-text-secondary);
       text-decoration: none;
-      font-size: 0.78rem;
+      font-size: 0.8rem;
       font-weight: 500;
-      transition: color 0.15s, background 0.15s;
+      transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
 
-      i { font-size: 0.8rem; }
+      i { font-size: 0.85rem; transition: transform 0.25s ease; }
 
-      &:hover { color: var(--svs-text-primary); background: var(--svs-bg-elevated); }
-      &.active { color: var(--svs-accent); background: rgba(59,130,246,0.12); }
+      &:hover {
+        color: var(--svs-text-primary);
+        background: rgba(255, 255, 255, 0.05);
+        transform: translateY(-1px);
+        text-shadow: 0 0 12px rgba(255, 255, 255, 0.2);
+        i { transform: scale(1.1); }
+      }
+      &.active {
+        color: var(--svs-accent);
+        background: rgba(99, 102, 241, 0.15);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+      }
     }
 
     /* ── Status chips ───────────────────────────────────────────── */

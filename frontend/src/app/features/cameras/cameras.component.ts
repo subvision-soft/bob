@@ -6,18 +6,18 @@ import { TableModule } from 'primeng/table';
 import { ButtonModule } from 'primeng/button';
 import { DialogModule } from 'primeng/dialog';
 import { InputTextModule } from 'primeng/inputtext';
-import { DropdownModule } from 'primeng/dropdown';
-import { InputSwitchModule } from 'primeng/inputswitch';
+import { SelectModule } from 'primeng/select';
+import { ToggleSwitchModule } from 'primeng/toggleswitch';
 import { TagModule } from 'primeng/tag';
 import { BadgeModule } from 'primeng/badge';
 import { AccordionModule } from 'primeng/accordion';
 import { SliderModule } from 'primeng/slider';
-import { TooltipModule } from 'primeng/tooltip';
 import { MessageService } from 'primeng/api';
 import { ToastModule } from 'primeng/toast';
 
 import { ApiService, Camera, CameraObsSceneOption, CameraSubscription } from '../../core/api.service';
 import { AppStore } from '../../store/app.store';
+import {TooltipModule} from "primeng/tooltip";
 
 const REACTION_MODES = [
   { label: 'INFORM ONLY', value: 'INFORM_ONLY', severity: 'secondary' },
@@ -38,7 +38,7 @@ const EVENT_TYPES = [
   imports: [
     CommonModule, FormsModule, ReactiveFormsModule,
     TableModule, ButtonModule, DialogModule, InputTextModule,
-    DropdownModule, InputSwitchModule, TagModule, BadgeModule,
+    SelectModule, ToggleSwitchModule, TagModule, BadgeModule,
     AccordionModule, SliderModule, TooltipModule, ToastModule,
   ],
   providers: [MessageService],
@@ -155,7 +155,7 @@ const EVENT_TYPES = [
           <div class="form-row">
             <div class="form-field">
               <label>Source Type</label>
-              <p-dropdown formControlName="source_type" [options]="sourceTypes" optionLabel="label" optionValue="value" />
+              <p-select formControlName="source_type" [options]="sourceTypes" optionLabel="label" optionValue="value" />
             </div>
             <div class="form-field">
               <label>Source URL / Scene Name</label>
@@ -165,7 +165,7 @@ const EVENT_TYPES = [
 
           <div class="form-field">
             <div class="switch-row">
-              <p-inputSwitch formControlName="enabled" />
+              <p-toggle-switch formControlName="enabled" />
               <span>Enabled</span>
             </div>
           </div>
@@ -176,13 +176,13 @@ const EVENT_TYPES = [
           <div formArrayName="subscriptions" class="subscriptions-list">
             @for (sub of subscriptionsArray.controls; track i; let i = $index) {
               <div [formGroupName]="i" class="subscription-row">
-                <p-dropdown
+                <p-select
                   formControlName="event_type"
                   [options]="eventTypeOptions"
                   placeholder="Event Type"
                   class="sub-event-select"
                 />
-                <p-dropdown
+                <p-select
                   formControlName="mode"
                   [options]="modeOptions"
                   optionLabel="label"
@@ -193,7 +193,7 @@ const EVENT_TYPES = [
                   <label class="text-xs">Priority: {{ sub.get('priority')?.value }}</label>
                   <p-slider formControlName="priority" [min]="0" [max]="100" />
                 </div>
-                <p-inputSwitch formControlName="enabled" pTooltip="Enable subscription" />
+                <p-toggle-switch formControlName="enabled" pTooltip="Enable subscription" />
                 <p-button icon="pi pi-trash" severity="danger" [text]="true" size="small"
                           (onClick)="removeSubscription(i)" />
                 <div class="sub-scenes" formArrayName="obs_scene_options">
@@ -206,7 +206,7 @@ const EVENT_TYPES = [
                   <div class="sub-scenes-list">
                     @for (scene of getSubSceneArray(i).controls; track j; let j = $index) {
                       <div [formGroupName]="j" class="sub-scene-row">
-                        <p-dropdown
+                        <p-select
                           formControlName="scene_name"
                           [options]="obsSceneSelectOptionsFor(i)"
                           optionLabel="label"
@@ -331,9 +331,9 @@ const EVENT_TYPES = [
     .text-center { text-align: center; }
 
     :host ::ng-deep .svs-table { background: var(--svs-bg-card); }
-    :host ::ng-deep .sub-event-select .p-dropdown { width: 100%; }
-    :host ::ng-deep .sub-mode-select .p-dropdown { width: 100%; }
-    :host ::ng-deep .sub-scene-row .p-dropdown { width: 100%; }
+    :host ::ng-deep .sub-event-select .p-select { width: 100%; }
+    :host ::ng-deep .sub-mode-select .p-select { width: 100%; }
+    :host ::ng-deep .sub-scene-row .p-select { width: 100%; }
   `],
 })
 export class CamerasComponent implements OnInit {

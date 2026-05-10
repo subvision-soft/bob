@@ -6,7 +6,7 @@ import { FormsModule } from '@angular/forms';
 import { TableModule } from 'primeng/table';
 import { ButtonModule } from 'primeng/button';
 import { TagModule } from 'primeng/tag';
-import { DropdownModule } from 'primeng/dropdown';
+import { SelectModule } from 'primeng/select';
 import { ToastModule } from 'primeng/toast';
 import { PanelModule } from 'primeng/panel';
 import { SplitterModule } from 'primeng/splitter';
@@ -21,13 +21,13 @@ import { WebSocketService } from '../../core/websocket.service';
   standalone: true,
   imports: [
     CommonModule, FormsModule,
-    TableModule, ButtonModule, TagModule, DropdownModule,
+    TableModule, ButtonModule, TagModule, SelectModule,
     ToastModule, PanelModule, SplitterModule,
   ],
   providers: [MessageService],
   template: `
     <div class="events-page">
-      <p-splitter [panelSizes]="[65, 35]" styleClass="h-full">
+      <p-splitter [panelSizes]="[65, 35]" class="h-full">
 
         <!-- LEFT: Event history -->
         <ng-template pTemplate>
@@ -38,7 +38,7 @@ import { WebSocketService } from '../../core/websocket.service';
             </div>
 
             <p-table [value]="events()" [scrollable]="true" scrollHeight="flex"
-                     [rowHover]="true" styleClass="event-table" [virtualScroll]="true">
+                     [rowHover]="true" class="event-table" [virtualScroll]="true">
               <ng-template pTemplate="header">
                 <tr>
                   <th style="width: 90px">Severity</th>
@@ -86,7 +86,7 @@ import { WebSocketService } from '../../core/websocket.service';
 
             <div class="section-divider">Custom Event</div>
             <div class="custom-sim">
-              <p-dropdown
+              <p-select
                 [(ngModel)]="customEventType"
                 [options]="eventTypeOptions"
                 placeholder="Select event type"
@@ -225,10 +225,10 @@ export class EventsComponent implements OnInit, OnDestroy {
     });
   }
 
-  getSeverityLevel(severity: string): 'success' | 'info' | 'warning' | 'danger' | 'secondary' | undefined {
-    const map: Record<string, 'success' | 'info' | 'warning' | 'danger' | 'secondary'> = {
+  getSeverityLevel(severity: string): 'success' | 'info' | 'warn' | 'danger' | 'secondary' | undefined {
+    const map: Record<string, 'success' | 'info' | 'warn' | 'danger' | 'secondary'> = {
       CRITICAL: 'danger',
-      HIGH: 'warning',
+      HIGH: 'warn',
       MEDIUM: 'info',
       LOW: 'secondary',
     };

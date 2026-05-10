@@ -7,13 +7,14 @@ import { ButtonModule } from 'primeng/button';
 import { DialogModule } from 'primeng/dialog';
 import { InputTextModule } from 'primeng/inputtext';
 import { TagModule } from 'primeng/tag';
-import { InputSwitchModule } from 'primeng/inputswitch';
+import { ToggleSwitchModule } from 'primeng/toggleswitch';
 import { ToastModule } from 'primeng/toast';
 import { AccordionModule } from 'primeng/accordion';
-import { InputTextareaModule } from 'primeng/inputtextarea';
+import { TextareaModule } from 'primeng/textarea';
 import { MessageService } from 'primeng/api';
 
 import { ApiService, RuleProfile } from '../../core/api.service';
+import {Tooltip} from "primeng/tooltip";
 
 @Component({
   selector: 'app-rules',
@@ -21,7 +22,7 @@ import { ApiService, RuleProfile } from '../../core/api.service';
   imports: [
     CommonModule, FormsModule, ReactiveFormsModule,
     TableModule, ButtonModule, DialogModule, InputTextModule,
-    TagModule, InputSwitchModule, ToastModule, AccordionModule, InputTextareaModule,
+    TagModule, ToggleSwitchModule, ToastModule, AccordionModule, TextareaModule, Tooltip,
   ],
   providers: [MessageService],
   template: `
@@ -266,10 +267,10 @@ export class RulesComponent implements OnInit {
 
   profileForm!: FormGroup;
 
-  reactionModes: { name: string; severity: 'success' | 'info' | 'warning' | 'danger' | 'secondary'; desc: string }[] = [
+  reactionModes: { name: string; severity: 'success' | 'info' | 'warn' | 'danger' | 'secondary'; desc: string }[] = [
     { name: 'INFORM_ONLY', severity: 'secondary', desc: 'Camera receives event for context only — no switch triggered.' },
     { name: 'PREPARE', severity: 'info', desc: 'Pre-loads OBS preview and warms PTZ — no immediate program switch.' },
-    { name: 'SWITCH_IF_HIGH_SCORE', severity: 'warning', desc: 'Triggers switch only if camera score exceeds the configured threshold.' },
+    { name: 'SWITCH_IF_HIGH_SCORE', severity: 'warn', desc: 'Triggers switch only if camera score exceeds the configured threshold.' },
     { name: 'FORCE_SWITCH', severity: 'danger', desc: 'Absolute priority — bypasses cooldowns and score thresholds.' },
   ];
 

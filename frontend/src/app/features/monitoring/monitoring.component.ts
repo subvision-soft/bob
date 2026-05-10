@@ -60,7 +60,7 @@ export interface SwitchRecord {
                       <p-tag value="ON AIR" severity="danger" />
                     }
                     @if (ctx.is_in_cooldown) {
-                      <p-tag value="COOLDOWN" severity="warning" />
+                      <p-tag value="COOLDOWN" severity="warn" />
                     }
                     @if (ctx.pending_mode) {
                       <p-tag [value]="ctx.pending_mode" severity="info" />

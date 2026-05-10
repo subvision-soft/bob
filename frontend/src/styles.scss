@@ -1,7 +1,5 @@
-@use 'primeflex/primeflex';
 @import 'primeicons/primeicons.css';
-@import 'primeng/resources/themes/lara-dark-blue/theme.css';
-@import 'primeng/resources/primeng.css';
+
 
 /* ── Google Fonts ─────────────────────────────────────────────── */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
@@ -114,8 +112,8 @@ html, body {
 .p-datatable .p-datatable-tbody > tr > td { border-color: var(--svs-border-subtle) !important; font-size: 0.82rem !important; }
 
 .p-inputtext { background: var(--svs-bg-base) !important; border-color: var(--svs-border) !important; color: var(--svs-text-primary) !important; }
-.p-dropdown { background: var(--svs-bg-base) !important; border-color: var(--svs-border) !important; }
-.p-dropdown-panel { background: var(--svs-bg-elevated) !important; border-color: var(--svs-border) !important; }
+.p-select { background: var(--svs-bg-base) !important; border-color: var(--svs-border) !important; }
+.p-select-panel { background: var(--svs-bg-elevated) !important; border-color: var(--svs-border) !important; }
 
 /* ── Utility Classes ─────────────────────────────────────────── */
 .svs-monospace { font-family: var(--svs-font-mono) !important; }

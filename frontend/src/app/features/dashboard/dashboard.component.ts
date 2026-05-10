@@ -20,7 +20,6 @@ import { WebSocketService } from '../../core/websocket.service';
   standalone: true,
   imports: [
     CommonModule,
-    SplitterModule,
     PanelModule,
     TagModule,
     BadgeModule,
@@ -31,12 +30,8 @@ import { WebSocketService } from '../../core/websocket.service';
   ],
   template: `
     <div class="dashboard">
-      <!-- ── Main 3-column splitter ──────────────────────────────── -->
-      <p-splitter [panelSizes]="[22, 54, 24]" [minSizes]="[15, 30, 15]" styleClass="dashboard-splitter">
-
-        <!-- ── LEFT: Camera Grid ──────────────────────────────────── -->
-        <ng-template pTemplate>
-          <div class="panel-col">
+      <!-- ── LEFT: Camera Grid ──────────────────────────────────── -->
+      <div class="svs-card panel-col">
             <div class="svs-section-title">
               <i class="pi pi-camera"></i> CAMERAS
               <span class="svs-badge">{{ store.cameras().length }}</span>
@@ -92,12 +87,10 @@ import { WebSocketService } from '../../core/websocket.service';
                 </div>
               }
             </div>
-          </div>
-        </ng-template>
+        </div>
 
-        <!-- ── CENTER: Program / Preview monitors ─────────────────── -->
-        <ng-template pTemplate>
-          <div class="panel-col panel-col--center">
+      <!-- ── CENTER: Program / Preview monitors ─────────────────── -->
+      <div class="svs-card panel-col panel-col--center">
 
             <!-- Program monitor -->
             <div class="monitor monitor--program">
@@ -173,11 +166,9 @@ import { WebSocketService } from '../../core/websocket.service';
             }
 
           </div>
-        </ng-template>
 
-        <!-- ── RIGHT: Event log + Decision trace ───────────────────── -->
-        <ng-template pTemplate>
-          <div class="panel-col">
+      <!-- ── RIGHT: Event log + Decision trace ───────────────────── -->
+      <div class="svs-card panel-col">
 
             <!-- Decision trace -->
             <div class="svs-section-title">
@@ -239,16 +230,16 @@ import { WebSocketService } from '../../core/websocket.service';
             </div>
 
           </div>
-        </ng-template>
-      </p-splitter>
     </div>
   `,
   styles: [`
     .dashboard {
+      padding: 1.5rem;
       height: 100%;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
+      display: grid;
+      grid-template-columns: minmax(260px, 1fr) minmax(500px, 2.5fr) minmax(300px, 1.2fr);
+      gap: 1rem;
+      overflow-y: auto;
     }
 
     :host ::ng-deep .dashboard-splitter {
@@ -260,7 +251,8 @@ import { WebSocketService } from '../../core/websocket.service';
       height: 100%;
       display: flex;
       flex-direction: column;
-      overflow-y: auto;
+      overflow: hidden;
+      padding: 0.5rem;
     }
 
     .panel-col--center {
@@ -320,13 +312,15 @@ import { WebSocketService } from '../../core/websocket.service';
     .monitor {
       display: flex;
       flex-direction: column;
-      border-radius: var(--svs-radius-md);
+      border-radius: var(--svs-radius-sm);
       overflow: hidden;
-      border: 2px solid var(--svs-border);
+      border: 1px solid var(--svs-border);
       flex: 1;
+      box-shadow: var(--svs-shadow-lg);
+      background: var(--svs-bg-elevated);
     }
-    .monitor--program { border-color: var(--svs-program-color); }
-    .monitor--preview { border-color: var(--svs-preview-color); flex: 0.6; }
+    .monitor--program { border: 2px solid var(--svs-program-color); box-shadow: 0 0 40px rgba(239,68,68,0.25); }
+    .monitor--preview { border: 2px solid var(--svs-preview-color); box-shadow: 0 0 30px rgba(16,185,129,0.15); flex: 0.6; }
 
     .monitor__header {
       display: flex; align-items: center; gap: 0.5rem;
@@ -495,7 +489,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   });
 
   manualSwitch(camera: Camera): void {
-    this.api.setObsScene(camera.obs_scene_name||'', 'program').subscribe();
+    this.api.setObsScene(camera.obs_scene_name || '', 'program').subscribe();
   }
 
   reloadCameras(): void {

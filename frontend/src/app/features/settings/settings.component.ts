@@ -41,7 +41,7 @@ interface SystemSettings {
       </div>
 
 
-      <p-accordion [multiple]="true">
+      <p-accordion [multiple]="true" [value]="['0','1','2','3']">
 
         <!-- External API -->
         <p-accordion-panel value="0">

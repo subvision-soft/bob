@@ -56,64 +56,15 @@ html, body {
   overflow: hidden;
 }
 
-/* ── PrimeNG Overrides ───────────────────────────────────────── */
-.p-component { font-family: var(--svs-font-base) !important; }
-
-.p-menubar {
-  background: var(--svs-bg-surface) !important;
-  border: 1px solid var(--svs-border) !important;
-  border-radius: 0 !important;
-  padding: 0.4rem 1rem !important;
+/* Force routed components to take full height for scrolling */
+.svs-content > :not(router-outlet) {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
 }
-
-.p-panel {
-  background: var(--svs-bg-card) !important;
-  border: 1px solid var(--svs-border) !important;
-  border-radius: var(--svs-radius-md) !important;
-}
-.p-panel .p-panel-header {
-  background: var(--svs-bg-elevated) !important;
-  border-bottom: 1px solid var(--svs-border) !important;
-  border-radius: var(--svs-radius-md) var(--svs-radius-md) 0 0 !important;
-  padding: 0.6rem 1rem !important;
-  font-size: 0.8rem !important;
-  font-weight: 600 !important;
-  letter-spacing: 0.05em !important;
-  text-transform: uppercase !important;
-  color: var(--svs-text-secondary) !important;
-}
-
-.p-tabview .p-tabview-nav { background: var(--svs-bg-surface) !important; border-color: var(--svs-border) !important; }
-.p-tabview .p-tabview-nav li .p-tabview-nav-link { background: transparent !important; color: var(--svs-text-secondary) !important; border-color: transparent !important; }
-.p-tabview .p-tabview-nav li.p-highlight .p-tabview-nav-link { color: var(--svs-accent) !important; border-color: var(--svs-accent) !important; }
-.p-tabview .p-tabview-panels { background: var(--svs-bg-card) !important; border: 1px solid var(--svs-border) !important; }
-
-.p-tag { font-size: 0.7rem !important; font-weight: 600 !important; letter-spacing: 0.04em; }
-
-.p-badge { font-size: 0.65rem !important; }
-
-.p-splitter { background: var(--svs-bg-base) !important; border: none !important; }
-.p-splitter-gutter { background: var(--svs-border) !important; }
-.p-splitter-panel { overflow: hidden; }
-
-.p-datatable .p-datatable-thead > tr > th {
-  background: var(--svs-bg-elevated) !important;
-  color: var(--svs-text-secondary) !important;
-  font-size: 0.72rem !important;
-  letter-spacing: 0.06em !important;
-  text-transform: uppercase !important;
-  border-color: var(--svs-border) !important;
-}
-.p-datatable .p-datatable-tbody > tr {
-  background: var(--svs-bg-card) !important;
-  color: var(--svs-text-primary) !important;
-}
-.p-datatable .p-datatable-tbody > tr:hover { background: var(--svs-bg-elevated) !important; }
-.p-datatable .p-datatable-tbody > tr > td { border-color: var(--svs-border-subtle) !important; font-size: 0.82rem !important; }
-
-.p-inputtext { background: var(--svs-bg-base) !important; border-color: var(--svs-border) !important; color: var(--svs-text-primary) !important; }
-.p-select { background: var(--svs-bg-base) !important; border-color: var(--svs-border) !important; }
-.p-select-panel { background: var(--svs-bg-elevated) !important; border-color: var(--svs-border) !important; }
 
 /* ── Utility Classes ─────────────────────────────────────────── */
 .svs-monospace { font-family: var(--svs-font-mono) !important; }

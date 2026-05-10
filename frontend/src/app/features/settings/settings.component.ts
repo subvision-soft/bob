@@ -335,16 +335,6 @@ interface SystemSettings {
       flex: 1;
     }
 
-    :host ::ng-deep .p-accordion-header-link {
-      background: var(--svs-bg-elevated) !important;
-      border-color: var(--svs-border) !important;
-    }
-
-    :host ::ng-deep .p-accordion-content {
-      background: var(--svs-bg-card) !important;
-      border-color: var(--svs-border) !important;
-    }
-
     .action-buttons {
       display: flex;
       gap: 0.5rem;

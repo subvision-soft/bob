@@ -260,7 +260,7 @@ import { WebSocketService } from '../../core/websocket.service';
       height: 100%;
       display: flex;
       flex-direction: column;
-      overflow: hidden;
+      overflow-y: auto;
     }
 
     .panel-col--center {

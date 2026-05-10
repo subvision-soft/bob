@@ -121,12 +121,13 @@ import { AppStore } from './store/app.store';
     .svs-topbar {
       display: flex;
       align-items: center;
+      flex-wrap: wrap;
       gap: 1rem;
-      height: 44px;
       min-height: 44px;
+      height: auto;
       background: var(--svs-bg-surface);
       border-bottom: 1px solid var(--svs-border);
-      padding: 0 1rem;
+      padding: 0.5rem 1rem;
       z-index: 100;
     }
 
@@ -158,6 +159,7 @@ import { AppStore } from './store/app.store';
     .svs-topbar__nav {
       display: flex;
       align-items: center;
+      flex-wrap: wrap;
       gap: 0.125rem;
       flex: 1;
     }

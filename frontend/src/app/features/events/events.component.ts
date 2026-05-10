@@ -129,7 +129,7 @@ import { WebSocketService } from '../../core/websocket.service';
     .monospace-sm { font-family: var(--svs-font-mono); font-size: 0.7rem; }
 
     /* Simulator */
-    .simulator-col { padding: 8px; display: flex; flex-direction: column; gap: 0.75rem; }
+    .simulator-col { padding: 8px; display: flex; flex-direction: column; gap: 0.75rem; overflow-y: auto; }
     .sim-desc { margin: 0; font-size: 0.78rem; color: var(--svs-text-secondary); }
 
     .sim-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }

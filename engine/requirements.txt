@@ -1,0 +1,8 @@
+opencv-python==4.11.0.86
+numpy==2.2.2
+fastapi==0.115.8
+pydantic==2.10.6
+uvicorn==0.34.0
+onnxruntime==1.20.1
+notion-client==2.3.0
+pyjwt==2.10.1

@@ -35,7 +35,8 @@ class Settings(BaseSettings):
 
     # ── External Competition Event API ────────────────────────────────
     external_api_url: str = "http://localhost:9000/api"
-    external_api_poll_interval_ms: int = 100  # poll every 100ms
+    external_api_token_url: str = "http://localhost:9000/api/token"
+    external_api_poll_interval_ms: int = 1000  # poll every 100ms
     external_api_timeout_s: float = 5.0
     external_api_key: str = ""
 

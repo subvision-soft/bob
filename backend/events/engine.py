@@ -13,7 +13,10 @@ Key responsibilities:
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
+from dataclasses import dataclass
+from datetime import datetime, timezone
 import time
 from collections import deque
 from typing import Any, Deque, Dict, List, Optional, Set, Tuple
@@ -22,6 +25,7 @@ import httpx
 import structlog
 
 from backend.core.event_bus import event_bus
+from backend.realization.camera_subscriber import subscriber_registry
 from backend.core.settings import get_settings
 from backend.events.models import CompetitionEvent, EventType
 
@@ -31,6 +35,24 @@ settings = get_settings()
 # ── Deduplication window ──────────────────────────────────────────────────────
 DEDUP_WINDOW_SECONDS = 5.0
 DEDUP_MAX_SIZE = 1000
+
+
+@dataclass
+class FrameSample:
+    frame_id: int
+    timestamp: float
+    image_data: str
+
+
+@dataclass
+class FrameWindow:
+    samples: Deque[FrameSample]
+    updated_at: float = 0.0
+
+    def __init__(self) -> None:
+        # Keep history by time (pruned in update_frame_cursor), not by fixed count.
+        self.samples = deque()
+        self.updated_at = 0.0
 
 
 class DeduplicationCache:
@@ -112,10 +134,16 @@ class EventEngine:
     def __init__(self) -> None:
         self._dedup = DeduplicationCache()
         self._breaker = CircuitBreaker()
-        self._last_frame_ts: float = time.monotonic()
-        self._last_frame_id: int = 0
+        self._frame_windows: Dict[str, FrameWindow] = {}
         self._poll_interval = settings.external_api_poll_interval_ms / 1000.0
         self._client: Optional[httpx.AsyncClient] = None
+        self._auth_token: Optional[str] = None
+        self._auth_token_expires_at: Optional[float] = None
+        self._last_api_call_time: Dict[str, float] = {}  # camera_id -> last API call timestamp
+        self._api_call_throttle_s = 1.0  # Call API once per second per camera
+        self._frame_compare_delta_s = 1.0  # Compare current frame with frame from ~1s earlier
+        self._frame_history_keep_s = 3.0
+        self._last_skip_reason: Dict[str, str] = {}
         self._stats = {
             "polled": 0,
             "received": 0,
@@ -124,16 +152,149 @@ class EventEngine:
             "errors": 0,
         }
 
-    def update_frame_cursor(self, frame_id: int, timestamp: float) -> None:
-        """Called by VideoIngestWorker to keep the frame cursor up to date."""
-        self._last_frame_id = frame_id
-        self._last_frame_ts = timestamp
+    def update_frame_cursor(self, camera_id: str, frame_id: int, timestamp: float, image_data: bytes) -> None:
+        """Called by VideoIngestWorker to keep the per-camera two-frame window up to date."""
+        window = self._frame_windows.setdefault(camera_id, FrameWindow())
+        sample = FrameSample(
+            frame_id=frame_id,
+            timestamp=timestamp,
+            image_data=base64.b64encode(image_data).decode(),
+        )
+        window.samples.append(sample)
+
+        # Keep only a short rolling history used for 1-second comparisons.
+        min_timestamp = timestamp - self._frame_history_keep_s
+        while window.samples and window.samples[0].timestamp < min_timestamp:
+            window.samples.popleft()
+
+        window.updated_at = time.monotonic()
+
+    def _candidate_camera_ids(self) -> List[str]:
+        # Primary source: all registered subscribers (configured cameras).
+        subscriber_ids = list(subscriber_registry.subscriber_ids)
+        if subscriber_ids:
+            # Keep deterministic order: newest frame windows first when available.
+            return sorted(
+                subscriber_ids,
+                key=lambda cid: self._frame_windows.get(cid).updated_at if cid in self._frame_windows else 0.0,
+                reverse=True,
+            )
+
+        # Fallback: if no subscribers are registered yet, use frame windows.
+        if not self._frame_windows:
+            return []
+        items = sorted(self._frame_windows.items(), key=lambda item: item[1].updated_at, reverse=True)
+        return [camera_id for camera_id, _ in items]
+
+    def _should_call_api(self, camera_id: str) -> bool:
+        """Check if we should call the API for this camera (throttle to ~1s)."""
+        now = time.monotonic()
+        last_call = self._last_api_call_time.get(camera_id, 0)
+        return (now - last_call) >= self._api_call_throttle_s
+
+    def _record_api_call(self, camera_id: str) -> None:
+        """Record that we made an API call for this camera."""
+        self._last_api_call_time[camera_id] = time.monotonic()
+
+    def _frame_window_payload(self, camera_id: str) -> Optional[Dict[str, Any]]:
+        if camera_id not in self._frame_windows:
+            self._last_skip_reason[camera_id] = "no_frame_window"
+            return None
+
+        # Throttle API calls to once per second per camera
+        if not self._should_call_api(camera_id):
+            self._last_skip_reason[camera_id] = "throttled"
+            return None
+
+        window = self._frame_windows.get(camera_id)
+        if not window or len(window.samples) < 2:
+            self._last_skip_reason[camera_id] = "insufficient_samples"
+            return None
+
+        current = window.samples[-1]
+        target_timestamp = current.timestamp - self._frame_compare_delta_s
+        previous: Optional[FrameSample] = None
+        for sample in reversed(list(window.samples)[:-1]):
+            if sample.timestamp <= target_timestamp:
+                previous = sample
+                break
+
+        # Not enough history yet to build a ~1-second frame pair.
+        if previous is None:
+            self._last_skip_reason[camera_id] = "no_1s_previous_frame"
+            return None
+
+        # If there is no active subscriber or no enabled subscriptions for this camera,
+        # skip calling the external detection API to avoid unnecessary work.
+        subscriber = subscriber_registry.get_subscriber(camera_id)
+        subscriptions: Optional[List[str]] = None
+        if subscriber is None:
+            self._last_skip_reason[camera_id] = "no_subscriber"
+            return None
+        # Extract enabled subscription event types
+        ctx = subscriber.context
+        subscriptions = [s.event_type for s in ctx.subscriptions if s.enabled]
+        if not subscriptions:
+            self._last_skip_reason[camera_id] = "no_enabled_subscriptions"
+            return None
+
+        # Record the API call time for throttling
+        self._record_api_call(camera_id)
+        self._last_skip_reason[camera_id] = "ready"
+
+        return {
+            "camera_id": camera_id,
+            "subscriptions": subscriptions,
+            "previous_frame": {
+                "frame_id": previous.frame_id,
+                "timestamp": previous.timestamp,
+                "image_data": previous.image_data,
+            },
+            "current_frame": {
+                "frame_id": current.frame_id,
+                "timestamp": current.timestamp,
+                "image_data": current.image_data,
+            },
+        }
+
+    async def _fetch_token(self) -> None:
+        async with httpx.AsyncClient(
+            timeout=settings.external_api_timeout_s,
+            follow_redirects=True,
+        ) as client:
+            response = await client.get(settings.external_api_token_url)
+            response.raise_for_status()
+            data = response.json()
+
+        self._auth_token = data.get("token")
+        expires_at = data.get("expiration")
+        self._auth_token_expires_at = None
+        if isinstance(expires_at, str):
+            try:
+                parsed = datetime.fromisoformat(expires_at)
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=timezone.utc)
+                self._auth_token_expires_at = parsed.timestamp()
+            except ValueError:
+                self._auth_token_expires_at = None
+
+    async def _ensure_token(self) -> None:
+        if not self._auth_token:
+            await self._fetch_token()
+            return
+        if self._auth_token_expires_at and (time.time() >= self._auth_token_expires_at - 30):
+            await self._fetch_token()
+
+    def _auth_headers(self) -> Dict[str, str]:
+        if not self._auth_token:
+            return {}
+        return {"Authorization": f"Bearer {self._auth_token}"}
 
     async def start(self) -> None:
+        await self._ensure_token()
         self._client = httpx.AsyncClient(
             base_url=settings.external_api_url,
             timeout=settings.external_api_timeout_s,
-            headers={"X-Api-Key": settings.external_api_key} if settings.external_api_key else {},
         )
 
     async def stop(self) -> None:
@@ -147,28 +308,53 @@ class EventEngine:
             return []
 
         self._stats["polled"] += 1
+        events: List[CompetitionEvent] = []
         try:
-            response = await self._client.get("/events/pending")
-            response.raise_for_status()
-            self._breaker.record_success()
+            camera_ids = self._candidate_camera_ids()
+            if not camera_ids:
+                log.debug("event_engine.poll_skip", reason="no_subscribers_or_camera_windows")
+                return []
 
-            raw_events: List[Dict[str, Any]] = response.json()
-            events: List[CompetitionEvent] = []
-
-            for raw in raw_events:
-                self._stats["received"] += 1
-                event = CompetitionEvent.from_external(raw)
-
-                if self._dedup.is_duplicate(event):
-                    self._stats["duplicates"] += 1
+            for camera_id in camera_ids:
+                payload = self._frame_window_payload(camera_id)
+                if payload is None:
+                    log.debug("event_engine.poll_skip", camera_id=camera_id, reason=self._last_skip_reason.get(camera_id, "unknown"))
                     continue
 
-                # Attach frame correlation
-                event.frame_id = self._last_frame_id
-                event.frame_timestamp = self._last_frame_ts
+                log.debug("event_engine.polling")
+                response = await self._client.post(
+                    "/events/pending",
+                    json=payload,
+                    headers=self._auth_headers(),
+                )
+                if response.status_code == 401:
+                    await self._fetch_token()
+                    response = await self._client.post(
+                        "/events/pending",
+                        json=payload,
+                        headers=self._auth_headers(),
+                    )
+                response.raise_for_status()
+                self._breaker.record_success()
 
-                self._dedup.add(event)
-                events.append(event)
+                raw_events: List[Dict[str, Any]] = response.json()
+                for raw in raw_events:
+                    self._stats["received"] += 1
+                    event = CompetitionEvent.from_external(raw)
+
+
+                    if self._dedup.is_duplicate(event):
+                        self._stats["duplicates"] += 1
+                        continue
+
+                    # Attach frame correlation
+                    if event.frame_id is None:
+                        event.frame_id = payload["current_frame"]["frame_id"]
+                    if event.frame_timestamp is None:
+                        event.frame_timestamp = payload["current_frame"]["timestamp"]
+
+                    self._dedup.add(event)
+                    events.append(event)
 
             return events
 

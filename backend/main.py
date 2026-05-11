@@ -48,6 +48,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Initialize default settings if table is empty
     default_settings = {
         "external_api_url": (settings.external_api_url, "string", "External competition API base URL"),
+        "external_api_token_url": (settings.external_api_token_url, "string", "External competition API token URL"),
         "external_api_poll_interval_ms": (settings.external_api_poll_interval_ms, "int", "Poll interval for external API (ms)"),
         "obs_websocket_url": (settings.obs_websocket_url, "string", "OBS WebSocket URL"),
         "obs_websocket_password": (settings.obs_websocket_password, "string", "OBS WebSocket password"),

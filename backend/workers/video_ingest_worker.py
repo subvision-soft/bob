@@ -12,13 +12,16 @@ Responsibilities:
 from __future__ import annotations
 
 import asyncio
+import base64
 import time
 from collections import defaultdict
 from typing import Dict, Optional
 
 import structlog
 
+from backend.events.engine import event_engine
 from backend.core.settings import get_settings
+from backend.obs.client import get_obs_client
 
 log = structlog.get_logger(__name__)
 settings = get_settings()
@@ -119,6 +122,7 @@ class VideoIngestWorker:
     """
     def __init__(self) -> None:
         self._streams: Dict[str, CameraStream] = {}
+        self._obs_scene_sources: Dict[str, str] = {}
 
     async def _sync_streams(self) -> None:
         from sqlalchemy import select
@@ -127,31 +131,43 @@ class VideoIngestWorker:
 
         async with AsyncSessionLocal() as session:
             result = await session.execute(
-                select(Camera).where(
-                    Camera.enabled == True,
-                    Camera.source_type != "obs_scene",
-                    Camera.source_url.is_not(None),
-                )
+                select(Camera).where(Camera.enabled == True)
             )
             cameras = result.scalars().all()
 
-        active_ids = {c.id for c in cameras}
+        active_stream_ids = set()
+        obs_scene_sources: Dict[str, str] = {}
 
-        # Start new streams
+        # Start / keep RTSP or file streams
         for cam in cameras:
-            if cam.id not in self._streams and cam.source_url:
+            if cam.source_type == "obs_scene":
+                scene_name = cam.obs_scene_name or cam.source_url or cam.name
+                if scene_name:
+                    obs_scene_sources[cam.id] = scene_name
+                    _stream_stats[cam.id].status = "OK"
+                continue
+
+            if not cam.source_url:
+                continue
+
+            active_stream_ids.add(cam.id)
+            if cam.id not in self._streams:
                 stream = CameraStream(cam.id, cam.source_url)
                 self._streams[cam.id] = stream
                 await stream.open()
 
         # Stop removed streams
         for cam_id in list(self._streams.keys()):
-            if cam_id not in active_ids:
+            if cam_id not in active_stream_ids:
                 stream = self._streams.pop(cam_id)
                 await stream.close()
                 _stream_stats.pop(cam_id, None)
 
+        self._obs_scene_sources = obs_scene_sources
+
     async def _capture_loop(self) -> None:
+        global _frame_counter
+
         # Loop over all active streams and capture one frame
         for cam_id, stream in list(self._streams.items()):
             start_time = time.monotonic()
@@ -164,12 +180,54 @@ class VideoIngestWorker:
                 stats.frames_received += 1
                 stats.last_frame_at = time.time()
                 stats.latency_ms = elapsed_ms
+                _frame_counter += 1
+                event_engine.update_frame_cursor(cam_id, _frame_counter, time.monotonic(), frame_bytes)
                 
                 # Simple FPS calculation over time
                 if stats.frames_received % 10 == 0:
                     stats.fps = 10.0 / max(0.001, (time.time() - stats.last_frame_at + 10 * elapsed_ms / 1000.0))
             else:
                 stats.frames_dropped += 1
+
+        # Ingest OBS scene snapshots as frames for obs_scene cameras
+        if self._obs_scene_sources:
+            obs_client = get_obs_client()
+            if not obs_client.is_connected:
+                for cam_id in self._obs_scene_sources:
+                    _stream_stats[cam_id].status = "ERROR"
+                return
+
+            for cam_id, scene_name in self._obs_scene_sources.items():
+                stats = _stream_stats[cam_id]
+                start_time = time.monotonic()
+                try:
+                    image_data = await obs_client.get_scene_snapshot(scene_name)
+                except Exception as e:
+                    stats.frames_dropped += 1
+                    stats.status = "ERROR"
+                    log.warning("video_ingest.obs_snapshot_failed", camera_id=cam_id, scene_name=scene_name, error=str(e))
+                    continue
+
+                if not image_data:
+                    stats.frames_dropped += 1
+                    continue
+
+                try:
+                    frame_bytes = base64.b64decode(image_data)
+                except Exception:
+                    stats.frames_dropped += 1
+                    log.warning("video_ingest.obs_snapshot_decode_failed", camera_id=cam_id, scene_name=scene_name)
+                    continue
+
+                elapsed_ms = (time.monotonic() - start_time) * 1000
+                _snapshots[cam_id] = frame_bytes
+                stats.frames_received += 1
+                stats.last_frame_at = time.time()
+                stats.latency_ms = elapsed_ms
+                stats.status = "OK"
+
+                _frame_counter += 1
+                event_engine.update_frame_cursor(cam_id, _frame_counter, time.monotonic(), frame_bytes)
 
     async def run(self) -> None:
         log.info("video_ingest_worker.started")

@@ -14,6 +14,7 @@ services:
       SVS_DATABASE_URL: "sqlite+aiosqlite:///./data/subvision.db"
       SVS_DEBUG: "false"
       SVS_EXTERNAL_API_URL: "${EXTERNAL_API_URL:-http://host.docker.internal:9000/api}"
+      SVS_EXTERNAL_API_TOKEN_URL: "${EXTERNAL_API_TOKEN_URL:-http://host.docker.internal:9000/api/token}"
       SVS_OBS_WEBSOCKET_URL: "${OBS_WS_URL:-ws://host.docker.internal:4455}"
       SVS_OBS_WEBSOCKET_PASSWORD: "${OBS_PASSWORD:-}"
       SVS_CORS_ORIGINS: "http://localhost,http://localhost:80,http://localhost:4200"

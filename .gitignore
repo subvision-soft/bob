@@ -4,3 +4,4 @@
 **/.env
 subvision.db
 **/__pycache__
+.idea

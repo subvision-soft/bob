@@ -33,7 +33,19 @@ export interface WsMessage<T = unknown> {
   camera_id?: string;
 }
 
-const WS_URL = 'ws://localhost:8000/ws';
+function buildWsUrl(): string {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+
+  // Angular dev server: backend is on 8000.
+  if (window.location.port === '4200') {
+    return `${protocol}//${window.location.hostname}:8000/ws`;
+  }
+
+  // Deployed (nginx/docker): use same host and proxy path /ws.
+  return `${protocol}//${window.location.host}/ws`;
+}
+
+const WS_URL = buildWsUrl();
 const RECONNECT_INTERVAL_MS = 3000;
 
 @Injectable({ providedIn: 'root' })

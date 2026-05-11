@@ -123,6 +123,8 @@ class CompetitionEvent(BaseModel):
             competition_id=payload.get("competition_id"),
             athlete_id=payload.get("athlete_id"),
             lane=payload.get("lane"),
+            frame_id=payload.get("frame_id"),
+            frame_timestamp=payload.get("frame_timestamp"),
             external_id=payload.get("id") or payload.get("event_id"),
             raw_payload=payload,
         )

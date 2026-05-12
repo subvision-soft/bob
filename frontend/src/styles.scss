@@ -117,10 +117,13 @@ body {
 }
 
 .svs-score-bar {
-  height: 4px;
+  height: 2px;
   background: var(--svs-border);
   border-radius: 2px;
   overflow: hidden;
+  position: absolute;
+  bottom: 0;
+  width: 100%;
 
   .fill {
     height: 100%;

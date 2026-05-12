@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from backend.core.context_manager import global_context
 from backend.database import get_db
 from backend.models import Camera, CameraSubscriptionModel, CameraSubscriptionSceneOption
 from backend.core.event_bus import event_bus
@@ -19,6 +20,7 @@ from backend.events.models import CompetitionEvent, EventType, EVENT_SEVERITY
 from backend.realization.camera_context import CameraContext, CameraSubscription, ObsSceneOption, ReactionMode
 from backend.realization.camera_subscriber import subscriber_registry
 from backend.schemas import CameraCreate, CameraEventSimulateRequest, CameraResponse, CameraUpdate
+from backend.websocket.manager import ws_manager
 
 log = structlog.get_logger(__name__)
 router = APIRouter()
@@ -30,7 +32,7 @@ def _model_to_response(camera: Camera) -> CameraResponse:
         label=camera.label,
         source_type=camera.source_type,
         source_url=camera.source_url,
-        obs_scene_name=camera.name if camera.source_type == "obs_scene" else None,
+        obs_scene_name=camera.obs_scene_name,
         enabled=camera.enabled,
         is_active=camera.is_active,
         subscriptions=[
@@ -74,7 +76,7 @@ async def _register_camera_subscriber(camera: Camera) -> None:
         )
         for s in camera.subscriptions
     ]
-    ctx = CameraContext(camera_id=camera.id, subscriptions=subs)
+    ctx = CameraContext(camera_id=camera.id, obs_scene_name=camera.obs_scene_name, subscriptions=subs)
     await subscriber_registry.register(ctx)
 
 
@@ -313,6 +315,8 @@ async def simulate_camera_event(
     )
 
     delivered = await event_bus.publish(event)
+    global_context.mark_event_activity()
+    await ws_manager.broadcast_event_received(event)
     log.info(
         "cameras.event_simulated",
         camera_id=camera_id,

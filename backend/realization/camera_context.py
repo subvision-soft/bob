@@ -57,6 +57,7 @@ class CameraContext:
     Read by the Realization Decision Engine.
     """
     camera_id: str
+    obs_scene_name: Optional[str] = None
 
     # ── Event state ───────────────────────────────────────────────────
     last_event: Optional[CompetitionEvent] = None
@@ -143,6 +144,10 @@ class CameraContext:
 
     def to_dict(self) -> dict:
         """Serializable snapshot for WebSocket broadcast."""
+        ts_last_on_air = self.time_since_last_on_air
+        # JSON does not support Infinity. Use -1 to indicate "never".
+        ts_last_on_air_val = round(ts_last_on_air, 2) if ts_last_on_air != float("inf") else -1
+
         return {
             "camera_id": self.camera_id,
             "last_event_type": self.last_event_type,
@@ -154,7 +159,7 @@ class CameraContext:
             "pending_transition": self.pending_transition,
             "pending_mode": self.pending_mode,
             "time_since_last_activity_s": round(self.time_since_last_activity, 2),
-            "time_since_last_on_air_s": round(self.time_since_last_on_air, 2),
+            "time_since_last_on_air_s": ts_last_on_air_val,
             "switch_count": self.switch_count,
             "recent_events": self.recent_events[-5:],
         }

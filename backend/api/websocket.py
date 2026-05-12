@@ -10,6 +10,7 @@ import json
 import structlog
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from backend.core.context_manager import global_context
 from backend.websocket.manager import ws_manager
 
 log = structlog.get_logger(__name__)
@@ -60,4 +61,6 @@ async def _handle_client_message(msg: dict, ws: WebSocket) -> None:
             raw_payload={"source": "ws_simulate", **msg},
         )
         await event_bus.publish(event)
+        global_context.mark_event_activity()
+        await ws_manager.broadcast_event_received(event)
         await ws.send_json({"type": "simulate_ack", "event_id": event.id})

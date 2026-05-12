@@ -56,6 +56,7 @@ class Settings(BaseSettings):
     min_display_duration_ms: int = 2000  # minimum time on air
     default_cooldown_ms: int = 3000    # anti-zap global cooldown
     score_threshold_switch: float = 60.0  # minimum score for SWITCH_IF_HIGH_SCORE
+    idle_scene_rotation_ms: int = 0    # rotate scenes after this much idle time; 0 disables
 
     # ── Config profiles ───────────────────────────────────────────────
     config_dir: str = "./configs"

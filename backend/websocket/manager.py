@@ -17,12 +17,15 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from typing import Any, Dict, Set
+from typing import Any, Dict, Set, TYPE_CHECKING
 
 import structlog
 from fastapi import WebSocket, WebSocketDisconnect
 
 log = structlog.get_logger(__name__)
+
+if TYPE_CHECKING:
+    from backend.events.models import CompetitionEvent
 
 
 class WebSocketManager:
@@ -78,6 +81,24 @@ class WebSocketManager:
                     self._stats["errors"] += 1
 
         self._stats["messages_sent"] += len(connections) - len(dead)
+
+    async def broadcast_event_received(self, event: "CompetitionEvent") -> None:
+        """Broadcast a competition event to the frontend live event log."""
+        event_data = event.model_dump(mode="json")
+        await self.broadcast({
+            "type": "event_received",
+            "data": {
+                "id": event_data["id"],
+                "event_type": event_data["type"],
+                "severity": event_data["severity"],
+                "competition_id": event_data["competition_id"],
+                "athlete_id": event_data["athlete_id"],
+                "lane": event_data["lane"],
+                "frame_id": event_data["frame_id"],
+                "received_at": event_data["received_at"],
+            },
+            "ts": time.time(),
+        })
 
     async def _send(self, ws: WebSocket, payload: str) -> None:
         await ws.send_text(payload)

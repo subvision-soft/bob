@@ -14,7 +14,7 @@ import { TextareaModule } from 'primeng/textarea';
 import { MessageService } from 'primeng/api';
 
 import { ApiService, RuleProfile } from '../../core/api.service';
-import {Tooltip} from "primeng/tooltip";
+import { Tooltip } from "primeng/tooltip";
 
 @Component({
   selector: 'app-rules',
@@ -81,6 +81,10 @@ import {Tooltip} from "primeng/tooltip";
                 <div class="config-row" *ngIf="profile.config!['score_threshold_switch']">
                   <span class="config-key">Score Threshold</span>
                   <span class="config-val">{{ profile.config!['score_threshold_switch'] }}</span>
+                </div>
+                <div class="config-row" *ngIf="profile.config && profile.config['idle_scene_rotation_ms'] !== undefined && profile.config['idle_scene_rotation_ms'] !== null">
+                  <span class="config-key">Idle Rotation</span>
+                  <span class="config-val">{{ profile.config!['idle_scene_rotation_ms'] }}ms</span>
                 </div>
                 <div class="config-row" *ngIf="profile.config!['decision_cycle_ms']">
                   <span class="config-key">Decision Cycle</span>
@@ -181,6 +185,13 @@ import {Tooltip} from "primeng/tooltip";
               <input pInputText type="number" formControlName="decision_cycle_ms" placeholder="50" />
             </div>
           </div>
+          <div class="form-row">
+            <div class="form-field">
+              <label>Idle Rotation (ms)</label>
+              <input pInputText type="number" formControlName="idle_scene_rotation_ms" placeholder="0" />
+            </div>
+            <div class="form-field"></div>
+          </div>
         </form>
 
         <ng-template pTemplate="footer">
@@ -278,7 +289,7 @@ export class RulesComponent implements OnInit {
     private api: ApiService,
     private fb: FormBuilder,
     private msg: MessageService,
-  ) {}
+  ) { }
 
   ngOnInit(): void {
     this.loadProfiles();
@@ -293,6 +304,7 @@ export class RulesComponent implements OnInit {
       default_cooldown_ms: [null],
       score_threshold_switch: [null],
       decision_cycle_ms: [null],
+      idle_scene_rotation_ms: [null],
     });
   }
 
@@ -314,6 +326,9 @@ export class RulesComponent implements OnInit {
     if (v.default_cooldown_ms) config['default_cooldown_ms'] = +v.default_cooldown_ms;
     if (v.score_threshold_switch) config['score_threshold_switch'] = +v.score_threshold_switch;
     if (v.decision_cycle_ms) config['decision_cycle_ms'] = +v.decision_cycle_ms;
+    if (v.idle_scene_rotation_ms !== null && v.idle_scene_rotation_ms !== undefined && v.idle_scene_rotation_ms !== '') {
+      config['idle_scene_rotation_ms'] = +v.idle_scene_rotation_ms;
+    }
 
     this.api.createProfile({ name: v.name, description: v.description, config }).subscribe({
       next: () => {

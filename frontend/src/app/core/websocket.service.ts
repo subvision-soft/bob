@@ -18,6 +18,7 @@ export type WsMessageType =
   | 'event_received'
   | 'program_switch'
   | 'decision_trace'
+  | 'event_received'
   | 'obs_state'
   | 'stream_health'
   | 'log'

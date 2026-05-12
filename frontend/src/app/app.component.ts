@@ -349,6 +349,11 @@ export class AppComponent implements OnInit, OnDestroy {
     this.ws.on('obs_state').pipe(takeUntil(this.destroy$)).subscribe(msg => {
       if (msg.data) this.store.updateObsStatus(msg.data as any);
     });
+
+    // Live events
+    this.ws.on('event_received').pipe(takeUntil(this.destroy$)).subscribe(msg => {
+      if (msg.data) this.store.pushEvent(msg.data as any);
+    });
   }
 
   ngOnDestroy(): void {

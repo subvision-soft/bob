@@ -24,10 +24,12 @@ from typing import Any, Deque, Dict, List, Optional, Set, Tuple
 import httpx
 import structlog
 
+from backend.core.context_manager import global_context
 from backend.core.event_bus import event_bus
 from backend.realization.camera_subscriber import subscriber_registry
 from backend.core.settings import get_settings
 from backend.events.models import CompetitionEvent, EventType
+from backend.websocket.manager import ws_manager
 
 log = structlog.get_logger(__name__)
 settings = get_settings()
@@ -381,6 +383,8 @@ class EventEngine:
                 events = await self.poll_once()
                 for event in events:
                     delivered = await event_bus.publish(event)
+                    global_context.mark_event_activity()
+                    await ws_manager.broadcast_event_received(event)
                     self._stats["published"] += 1
                     log.info(
                         "event_engine.published",

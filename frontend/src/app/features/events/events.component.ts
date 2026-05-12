@@ -311,7 +311,6 @@ export class EventsComponent implements OnInit, OnDestroy {
       if (msg.data) {
         const ev = msg.data as EventLogEntry;
         this.events.update(evts => [ev, ...evts].slice(0, 500));
-        this.store.pushEvent(ev);
       }
     });
   }

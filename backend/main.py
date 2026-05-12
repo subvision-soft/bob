@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
 import structlog
+import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -57,6 +58,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         "min_display_duration_ms": (settings.min_display_duration_ms, "int", "Minimum display duration before switch (ms)"),
         "default_cooldown_ms": (settings.default_cooldown_ms, "int", "Default post-switch cooldown (ms)"),
         "score_threshold_switch": (settings.score_threshold_switch, "float", "Score threshold for SWITCH_IF_HIGH_SCORE mode"),
+        "idle_scene_rotation_ms": (settings.idle_scene_rotation_ms, "int", "Rotate OBS scenes after this much idle time (ms), 0 disables"),
         "video_snapshot_interval_ms": (settings.video_snapshot_interval_ms, "int", "Snapshot push interval (ms)"),
         "debug": (settings.debug, "bool", "Enable debug logging"),
     }
@@ -136,3 +138,9 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+
+if __name__ == "__main__":
+    uvicorn.run(
+        "main:app",
+        port=8000,
+    )

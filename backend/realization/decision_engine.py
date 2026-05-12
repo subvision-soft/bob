@@ -45,6 +45,8 @@ class DecisionTrace:
     winner_score: float = 0.0
     winner_reason: str = ""
     switch_triggered: bool = False
+    idle_rotation_triggered: bool = False
+    rotated_scene: Optional[str] = None
     blocked_reason: Optional[str] = None
     global_cooldown_active: bool = False
     min_display_enforced: bool = False
@@ -57,6 +59,8 @@ class DecisionTrace:
             "winner_score": round(self.winner_score, 2),
             "winner_reason": self.winner_reason,
             "switch_triggered": self.switch_triggered,
+            "idle_rotation_triggered": self.idle_rotation_triggered,
+            "rotated_scene": self.rotated_scene,
             "blocked_reason": self.blocked_reason,
             "global_cooldown_active": self.global_cooldown_active,
             "min_display_enforced": self.min_display_enforced,
@@ -79,6 +83,7 @@ class RealizationDecisionEngine:
         self._min_display_ms = settings.min_display_duration_ms
         self._score_threshold = settings.score_threshold_switch
         self._default_cooldown_ms = settings.default_cooldown_ms
+        self._idle_scene_rotation_ms = settings.idle_scene_rotation_ms
 
     def set_obs_client(self, client: "OBSClient") -> None:
         self._obs = client
@@ -86,6 +91,20 @@ class RealizationDecisionEngine:
     def set_ws_broadcast(self, callback) -> None:
         """Register a callback to broadcast decision traces via WebSocket."""
         self._ws_broadcast_cb = callback
+
+    async def _broadcast_state(self) -> None:
+        if not self._ws_broadcast_cb:
+            return
+        try:
+            await self._ws_broadcast_cb({"type": "global_context", "data": self._ctx.to_dict()})
+            camera_scores = [ctx.to_dict() for ctx in subscriber_registry.get_all_contexts()]
+            await self._ws_broadcast_cb({
+                "type": "camera_scores",
+                "data": camera_scores,
+                "ts": time.time(),
+            })
+        except Exception:
+            log.exception("decision_engine.broadcast_state_failed")
 
     async def _sync_profile(self) -> None:
         from sqlalchemy import select
@@ -106,12 +125,15 @@ class RealizationDecisionEngine:
                 self._score_threshold = config["score_threshold_switch"]
             if "default_cooldown_ms" in config:
                 self._default_cooldown_ms = config["default_cooldown_ms"]
+            if "idle_scene_rotation_ms" in config:
+                self._idle_scene_rotation_ms = config["idle_scene_rotation_ms"]
         else:
             # Revert to settings defaults
             self._cycle_interval = settings.decision_cycle_ms / 1000.0
             self._min_display_ms = settings.min_display_duration_ms
             self._score_threshold = settings.score_threshold_switch
             self._default_cooldown_ms = settings.default_cooldown_ms
+            self._idle_scene_rotation_ms = settings.idle_scene_rotation_ms
 
     async def run(self) -> None:
         log.info("decision_engine.started", cycle_ms=settings.decision_cycle_ms)
@@ -212,6 +234,8 @@ class RealizationDecisionEngine:
         if winner_ctx is None:
             # Also handle PREPARE mode: load preview without switching
             await self._handle_prepare_mode(contexts)
+            if await self._handle_idle_rotation(contexts, trace):
+                return trace
             return trace
 
         # ── 5. Execute switch ──────────────────────────────────────────
@@ -241,9 +265,6 @@ class RealizationDecisionEngine:
                 prev_ctx.context.mark_off_air()
 
         winner.mark_on_air()
-        winner.pending_transition = False
-        winner.pending_mode = None
-        winner.pending_event_type = None
 
         # Apply cooldown to winner (anti-zap)
         if self._default_cooldown_ms > 0:
@@ -279,6 +300,13 @@ class RealizationDecisionEngine:
                 except Exception as e:
                     log.error("decision_engine.obs_switch_failed", error=str(e))
 
+        await self._broadcast_state()
+
+        # Clear pending transition fields after scene selection/execution
+        winner.pending_transition = False
+        winner.pending_mode = None
+        winner.pending_event_type = None
+
     async def _handle_prepare_mode(self, contexts: list[CameraContext]) -> None:
         """Load PREPARE-mode cameras into OBS preview without switching program."""
         prepare_candidates = [
@@ -300,19 +328,100 @@ class RealizationDecisionEngine:
                         await self._obs.set_preview_scene(scene_name)
                         self._ctx.preview_camera_id = best.camera_id
                         log.info("decision_engine.preview_preloaded", camera_id=best.camera_id)
+                        await self._broadcast_state()
                     except Exception as e:
                         log.error("decision_engine.obs_preview_failed", error=str(e))
+
+    async def _handle_idle_rotation(self, contexts: list[CameraContext], trace: DecisionTrace) -> bool:
+        """Rotate the current program camera's configured scenes after an idle period."""
+        if not self._obs or not settings.obs_enabled:
+            return False
+        if self._idle_scene_rotation_ms <= 0:
+            return False
+        if not self._ctx.program_camera_id:
+            return False
+
+        idle_anchor_at = max(self._ctx.last_event_at, self._ctx.last_switch_at, self._ctx.program_since)
+        if idle_anchor_at == 0.0:
+            return False
+
+        idle_ms = (time.monotonic() - idle_anchor_at) * 1000.0
+        if idle_ms < self._idle_scene_rotation_ms:
+            return False
+
+        current_ctx = next((ctx for ctx in contexts if ctx.camera_id == self._ctx.program_camera_id), None)
+        if current_ctx is None:
+            return False
+
+        scene_options = self._collect_rotation_scenes(current_ctx)
+        if len(scene_options) < 2:
+            return False
+
+        current_scene = self._obs.current_program_scene
+        next_scene = self._next_rotation_scene(scene_options, current_scene)
+        if next_scene is None or next_scene == current_scene:
+            return False
+
+        try:
+            await self._obs.set_program_scene(next_scene)
+            trace.switch_triggered = True
+            trace.idle_rotation_triggered = True
+            trace.rotated_scene = next_scene
+            trace.winner = current_ctx.camera_id
+            trace.winner_reason = f"IDLE_SCENE_ROTATION ({idle_ms:.0f}ms idle)"
+
+            self._ctx.record_switch(SwitchRecord(
+                from_camera=current_ctx.camera_id,
+                to_camera=current_ctx.camera_id,
+                reason=trace.winner_reason,
+                score=current_ctx.interest_score,
+                event_type=None,
+            ))
+
+            log.info(
+                "decision_engine.idle_scene_rotated",
+                camera_id=current_ctx.camera_id,
+                scene=next_scene,
+                idle_ms=round(idle_ms, 0),
+            )
+            return True
+        except Exception as e:
+            log.error("decision_engine.idle_rotation_failed", error=str(e))
+            return False
+
+    def _collect_rotation_scenes(self, ctx: CameraContext) -> list[str]:
+        scenes: list[str] = []
+        seen: set[str] = set()
+        for sub in ctx.subscriptions:
+            if not sub.enabled:
+                continue
+            for option in sub.obs_scene_options:
+                scene_name = option.scene_name.strip() if option.scene_name else ""
+                if not scene_name or scene_name in seen or option.weight <= 0:
+                    continue
+                seen.add(scene_name)
+                scenes.append(scene_name)
+        return scenes
+
+    @staticmethod
+    def _next_rotation_scene(scene_options: list[str], current_scene: Optional[str]) -> Optional[str]:
+        if not scene_options:
+            return None
+        if current_scene in scene_options:
+            current_index = scene_options.index(current_scene)
+            return scene_options[(current_index + 1) % len(scene_options)]
+        return scene_options[0]
 
     def _pick_obs_scene(self, ctx: CameraContext) -> Optional[str]:
         event_type = ctx.pending_event_type or ctx.last_event_type
         if not event_type:
-            return None
+            return ctx.obs_scene_name.strip() if ctx.obs_scene_name else None
         sub = ctx.get_subscription(event_type)
         if not sub:
-            return None
+            return ctx.obs_scene_name.strip() if ctx.obs_scene_name else None
         options = [o for o in sub.obs_scene_options if o.scene_name and o.weight > 0]
         if not options:
-            return None
+            return ctx.obs_scene_name.strip() if ctx.obs_scene_name else None
         total_weight = sum(o.weight for o in options)
         roll = random.uniform(0.0, total_weight)
         running = 0.0

@@ -13,12 +13,20 @@ Handles:
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Callable, Dict, List, Optional
+import time
+from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
 
 import structlog
 from obswebsocket import obsws, requests as obs_requests, events as obs_events  # type: ignore
 
+from backend.core.context_manager import SwitchRecord, global_context
+from backend.realization.camera_subscriber import subscriber_registry
+from backend.websocket.manager import ws_manager
+
 log = structlog.get_logger(__name__)
+
+if TYPE_CHECKING:
+    from backend.realization.camera_context import CameraContext
 
 
 class OBSConnectionState:
@@ -51,6 +59,7 @@ class OBSClient:
         self._scenes: List[str] = []
         self._current_program: Optional[str] = None
         self._current_preview: Optional[str] = None
+        self._scene_snapshot_cache: Dict[str, tuple[float, Optional[str]]] = {}
 
     @property
     def state(self) -> str:
@@ -59,6 +68,14 @@ class OBSClient:
     @property
     def is_connected(self) -> bool:
         return self._state == OBSConnectionState.CONNECTED
+
+    @property
+    def current_program_scene(self) -> Optional[str]:
+        return self._current_program
+
+    @property
+    def current_preview_scene(self) -> Optional[str]:
+        return self._current_preview
 
     async def connect(self) -> None:
         self._set_state(OBSConnectionState.CONNECTING)
@@ -90,6 +107,7 @@ class OBSClient:
             except Exception:
                 pass
         self._ws = None
+        self._scene_snapshot_cache.clear()
         self._set_state(OBSConnectionState.DISCONNECTED)
         log.info("obs_client.disconnected")
 
@@ -196,6 +214,17 @@ class OBSClient:
             return image_data.split(",", 1)[-1]
         return image_data
 
+    async def get_scene_snapshot_cached(self, scene_name: str, ttl_s: float = 2.0) -> Optional[str]:
+        if ttl_s <= 0:
+            return await self.get_scene_snapshot(scene_name)
+        now = time.monotonic()
+        cached = self._scene_snapshot_cache.get(scene_name)
+        if cached and (now - cached[0]) <= ttl_s:
+            return cached[1]
+        image_data = await self.get_scene_snapshot(scene_name)
+        self._scene_snapshot_cache[scene_name] = (now, image_data)
+        return image_data
+
     async def get_status(self) -> Dict[str, Any]:
         if self.is_connected:
             await self._refresh_current_scenes()
@@ -217,11 +246,101 @@ class OBSClient:
         event_type = type(event).__name__
         scene_name = getattr(event, "sceneName", None) or getattr(event, "scene_name", None)
         if scene_name:
+            # Update internal cache
             if event_type in {"CurrentProgramSceneChanged", "CurrentSceneChanged"}:
                 self._current_program = scene_name
+
+                # Try to map the scene name back to a camera and update global context
+                try:
+                    match_ctx = self._resolve_camera_by_scene(scene_name)
+                    prev_cam = global_context.program_camera_id
+
+                    if match_ctx and prev_cam != match_ctx.camera_id:
+                        if prev_cam:
+                            prev_sub = subscriber_registry.get_subscriber(prev_cam)
+                            if prev_sub:
+                                prev_sub.context.mark_off_air()
+                        match_ctx.mark_on_air()
+                        global_context.program_camera_id = match_ctx.camera_id
+                        global_context.program_since = time.monotonic()
+                        global_context.record_switch(SwitchRecord(
+                            from_camera=prev_cam,
+                            to_camera=match_ctx.camera_id,
+                            reason="obs_external_switch",
+                            score=0.0,
+                            event_type=None,
+                        ))
+
+                    if match_ctx:
+                        asyncio.create_task(self._broadcast_obs_sync(match_ctx.camera_id, scene_name))
+
+                except Exception:
+                    log.exception("obs_client.program_scene_sync_failed")
+
             elif event_type == "CurrentPreviewSceneChanged":
                 self._current_preview = scene_name
+                try:
+                    match_ctx = self._resolve_camera_by_scene(scene_name)
+                    global_context.preview_camera_id = match_ctx.camera_id if match_ctx else None
+                    asyncio.create_task(self._broadcast_obs_sync(None, scene_name, preview_only=True))
+                except Exception:
+                    log.exception("obs_client.preview_scene_sync_failed")
+
         log.debug("obs_client.event", event_type=event_type)
+
+    def _resolve_camera_by_scene(self, scene_name: str) -> Optional["CameraContext"]:
+        # Find camera with matching explicit obs_scene_name first
+        for ctx in subscriber_registry.get_all_contexts():
+            if ctx.obs_scene_name and ctx.obs_scene_name == scene_name:
+                return ctx
+
+        # Fallback: search subscription scene options
+        for ctx in subscriber_registry.get_all_contexts():
+            for sub in ctx.subscriptions:
+                for opt in sub.obs_scene_options:
+                    if opt.scene_name == scene_name:
+                        return ctx
+        return None
+
+    async def _broadcast_obs_sync(
+        self,
+        program_camera_id: Optional[str],
+        scene_name: str,
+        preview_only: bool = False,
+    ) -> None:
+        try:
+            await ws_manager.broadcast({
+                "type": "obs_state",
+                "data": {
+                    "state": self._state,
+                    "url": self._url,
+                    "current_program": self._current_program,
+                    "current_preview": self._current_preview,
+                    "scenes": self._scenes,
+                },
+                "ts": time.time(),
+            })
+
+            if not preview_only and program_camera_id:
+                await ws_manager.broadcast({
+                    "type": "program_switch",
+                    "data": {"camera_id": program_camera_id, "scene": scene_name},
+                })
+
+            # Push updated global context and camera scores so UI reflects ON AIR immediately
+            await ws_manager.broadcast({
+                "type": "global_context",
+                "data": global_context.to_dict(),
+            })
+
+            camera_scores = [ctx.to_dict() for ctx in subscriber_registry.get_all_contexts()]
+            await ws_manager.broadcast({
+                "type": "camera_scores",
+                "data": camera_scores,
+                "ts": time.time(),
+            })
+        except Exception:
+            log.exception("obs_client.broadcast_sync_failed")
 
 
 # ── Singleton with lazy init ──────────────────────────────────────────────────

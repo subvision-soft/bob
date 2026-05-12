@@ -79,6 +79,10 @@ class GlobalContext:
         self.total_switches += 1
         self.last_switch_at = time.monotonic()
 
+    def mark_event_activity(self) -> None:
+        self.events_processed += 1
+        self.last_event_at = time.monotonic()
+
     @property
     def is_global_cooldown_active(self) -> bool:
         return time.monotonic() < self.global_cooldown_until

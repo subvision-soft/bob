@@ -12,11 +12,13 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.core.context_manager import global_context
 from backend.core.event_bus import event_bus
 from backend.database import get_db
 from backend.events.models import CompetitionEvent, EventType, EVENT_SEVERITY
 from backend.models import EventLog
 from backend.schemas import EventLogResponse, EventSimulateRequest
+from backend.websocket.manager import ws_manager
 
 log = structlog.get_logger(__name__)
 router = APIRouter()
@@ -56,6 +58,8 @@ async def simulate_event(payload: EventSimulateRequest):
     )
 
     delivered = await event_bus.publish(event)
+    global_context.mark_event_activity()
+    await ws_manager.broadcast_event_received(event)
     log.info("events.simulated", event_type=event_type, delivered=delivered)
 
     return {"event_id": event.id, "delivered_to": delivered}

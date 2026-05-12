@@ -1,6 +1,6 @@
-import { Component, OnInit, OnDestroy, computed } from '@angular/core';
+import { Component, OnInit, OnDestroy, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Subject, takeUntil } from 'rxjs';
+import { Subject, interval, takeUntil } from 'rxjs';
 
 import { SplitterModule } from 'primeng/splitter';
 import { PanelModule } from 'primeng/panel';
@@ -13,7 +13,6 @@ import { ScrollPanelModule } from 'primeng/scrollpanel';
 
 import { AppStore } from '../../store/app.store';
 import { ApiService, Camera } from '../../core/api.service';
-import { WebSocketService } from '../../core/websocket.service';
 
 @Component({
   selector: 'app-dashboard',
@@ -32,58 +31,61 @@ import { WebSocketService } from '../../core/websocket.service';
     <div class="dashboard">
       <!-- ── LEFT: Camera Grid ──────────────────────────────────── -->
       <div class="svs-card panel-col">
-            <div class="svs-section-title">
-              <i class="pi pi-camera"></i> CAMERAS
-              <span class="svs-badge">{{ store.cameras().length }}</span>
+            <div class="svs-section-title svs-section-title--row">
+              <div class="svs-section-title__left">
+                <i class="pi pi-camera"></i> SCENES
+                <span class="svs-badge">{{ getSceneList().length }}</span>
+              </div>
+              <p-button
+                icon="pi pi-refresh"
+                label="Refresh scenes"
+                severity="secondary"
+                size="small"
+                [disabled]="!isObsConnected()"
+                (onClick)="refreshScenes()"
+              />
             </div>
 
             <div class="camera-grid">
-              @for (camera of store.cameras(); track camera.id) {
+              @for (scene of getSceneList(); track scene) {
                 <div
                   class="svs-camera-thumb"
-                  [class.on-air]="getCameraContext(camera.id)?.is_on_air"
-                  [class.preview]="isPreview(camera.id)"
-                  (click)="manualSwitch(camera)"
-                  [pTooltip]="camera.name"
+                  [class.on-air]="isProgramScene(scene)"
+                  [class.preview]="isPreviewScene(scene)"
+                  [class.disabled]="!isObsConnected()"
+                  (click)="manualSwitch(scene)"
+                  [pTooltip]="scene"
                 >
                   <!-- Snapshot or placeholder -->
-                  <img *ngIf="store.cameraSnapshots()[camera.id]"
-                       [src]="'data:image/jpeg;base64,' + store.cameraSnapshots()[camera.id]"
+                  <img *ngIf="sceneSnapshots()[scene]"
+                       [src]="'data:image/jpeg;base64,' + sceneSnapshots()[scene]"
                        class="cam-img" />
-                  <div *ngIf="!store.cameraSnapshots()[camera.id]" class="cam-placeholder">
+                  <div *ngIf="!sceneSnapshots()[scene]" class="cam-placeholder">
                     <i class="pi pi-video"></i>
+                    <span>No signal</span>
                   </div>
 
                   <!-- ON AIR overlay -->
-                  <div *ngIf="getCameraContext(camera.id)?.is_on_air" class="cam-overlay cam-overlay--onair">
+                  <div *ngIf="isProgramScene(scene)" class="cam-overlay cam-overlay--onair">
                     <span>● ON AIR</span>
                   </div>
-                  <div *ngIf="isPreview(camera.id) && !getCameraContext(camera.id)?.is_on_air" class="cam-overlay cam-overlay--preview">
+                  <div *ngIf="isPreviewScene(scene) && !isProgramScene(scene)" class="cam-overlay cam-overlay--preview">
                     <span>● PREVIEW</span>
                   </div>
 
                   <!-- Label + score bar -->
                   <div class="cam-footer">
-                    <span class="cam-label">{{ camera.label }}</span>
-                    <span class="cam-score">{{ getCameraContext(camera.id)?.interest_score | number:'1.0-0' }}</span>
-                  </div>
-                  <div class="svs-score-bar">
-                    <div
-                      class="fill"
-                      [class.high]="(getCameraContext(camera.id)?.interest_score ?? 0) >= 70"
-                      [class.med]="(getCameraContext(camera.id)?.interest_score ?? 0) >= 40 && (getCameraContext(camera.id)?.interest_score ?? 0) < 70"
-                      [class.low]="(getCameraContext(camera.id)?.interest_score ?? 0) < 40"
-                      [style.width]="(getCameraContext(camera.id)?.interest_score ?? 0) + '%'"
-                    ></div>
+                    <span class="cam-label">{{ scene }}</span>
+                    <span class="cam-score"></span>
                   </div>
                 </div>
               }
 
-              @if (store.cameras().length === 0) {
+              @if (getSceneList().length === 0) {
                 <div class="empty-state">
                   <i class="pi pi-camera"></i>
-                  <p>No cameras configured</p>
-                  <small>Go to <strong>Cameras</strong> to add one</small>
+                  <p>No scenes available</p>
+                  <small>Check OBS connection or refresh scenes</small>
                 </div>
               }
             </div>
@@ -97,7 +99,7 @@ import { WebSocketService } from '../../core/websocket.service';
               <div class="monitor__header">
                 <span class="monitor__dot"></span>
                 <span class="monitor__label">PROGRAM</span>
-                <span class="monitor__cam-name">{{ getProgramLabel() }}</span>
+                  <span class="monitor__cam-name">{{ getProgramLabel() }}</span>
                 @if (store.programCamera()) {
                   <span class="monitor__time">
                     {{ formatDuration(store.globalContext()?.time_on_current_camera_ms ?? 0) }}
@@ -110,7 +112,7 @@ import { WebSocketService } from '../../core/websocket.service';
                 } @else {
                   <div class="monitor__placeholder">
                     <i class="pi pi-video"></i>
-                    <span>{{ getProgramLabel() }}</span>
+                    <span>{{ getProgramPlaceholderText() }}</span>
                   </div>
                 }
               </div>
@@ -129,7 +131,7 @@ import { WebSocketService } from '../../core/websocket.service';
                 } @else {
                   <div class="monitor__placeholder monitor__placeholder--preview">
                     <i class="pi pi-video"></i>
-                    <span>{{ getPreviewLabel() }}</span>
+                    <span>{{ getPreviewPlaceholderText() }}</span>
                   </div>
                 }
               </div>
@@ -260,6 +262,19 @@ import { WebSocketService } from '../../core/websocket.service';
       gap: 0.5rem;
     }
 
+    .svs-section-title--row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+
+    .svs-section-title__left {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
     /* ── Camera grid ────────────────────────────────────── */
     .camera-grid {
       display: grid;
@@ -283,12 +298,20 @@ import { WebSocketService } from '../../core/websocket.service';
       &:hover { border-color: var(--svs-accent); }
       &.on-air { border-color: var(--svs-program-color) !important; box-shadow: 0 0 12px rgba(239,68,68,0.5); }
       &.preview { border-color: var(--svs-preview-color) !important; }
+      &.disabled {
+        opacity: 0.45;
+        filter: grayscale(1);
+        cursor: not-allowed;
+        pointer-events: none;
+      }
     }
 
     .cam-img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .cam-placeholder {
       display: flex; align-items: center; justify-content: center;
       height: 100%; color: var(--svs-text-muted); font-size: 1.2rem;
+      flex-direction: column; gap: 0.35rem;
+      span { font-size: 0.65rem; letter-spacing: 0.08em; text-transform: uppercase; }
     }
 
     .cam-overlay {
@@ -445,22 +468,23 @@ import { WebSocketService } from '../../core/websocket.service';
 })
 export class DashboardComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>();
-
+  readonly sceneSnapshots = signal<Record<string, string>>({});
+  private readonly sceneSnapshotIntervalMs = 1000;
   constructor(
     public store: AppStore,
     private api: ApiService,
-    private ws: WebSocketService,
   ) { }
 
   ngOnInit(): void {
-    // Subscribe to live events from WS
-    this.ws.on('event_received').pipe(takeUntil(this.destroy$)).subscribe(msg => {
-      if (msg.data) this.store.pushEvent(msg.data as any);
-    });
+    this.refreshScenes();
+    this.refreshSceneSnapshots();
+    interval(this.sceneSnapshotIntervalMs)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(() => this.refreshSceneSnapshots());
   }
 
-  getCameraContext(cameraId: string) {
-    return this.store.cameraContexts().find(c => c.camera_id === cameraId);
+  getSceneList(): string[] {
+    return this.store.obsStatus()?.scenes ?? [];
   }
 
   getCameraLabel(cameraId: string | null): string {
@@ -468,32 +492,79 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return this.store.cameras().find(c => c.id === cameraId)?.label ?? cameraId;
   }
 
-  isPreview(cameraId: string): boolean {
-    return this.store.globalContext()?.preview_camera_id === cameraId;
+  isProgramScene(sceneName: string): boolean {
+    return (this.store.obsStatus()?.current_program ?? '') === sceneName;
+  }
+
+  isPreviewScene(sceneName: string): boolean {
+    return (this.store.obsStatus()?.current_preview ?? '') === sceneName;
+  }
+
+  isObsConnected(): boolean {
+    return this.store.obsStatus()?.state === 'CONNECTED';
   }
 
   programSnap = computed(() => {
-    const cam = this.store.programCamera();
-    if (cam) return this.store.cameraSnapshots()[cam.id] ?? null;
     const scene = this.store.obsStatus()?.current_program ?? null;
+    if (scene && this.sceneSnapshots()[scene]) return this.sceneSnapshots()[scene];
     const obsCam = this.resolveCameraByScene(scene);
     return obsCam ? this.store.cameraSnapshots()[obsCam.id] ?? null : null;
   });
 
   previewSnap = computed(() => {
-    const cam = this.store.previewCamera();
-    if (cam) return this.store.cameraSnapshots()[cam.id] ?? null;
     const scene = this.store.obsStatus()?.current_preview ?? null;
+    if (scene && this.sceneSnapshots()[scene]) return this.sceneSnapshots()[scene];
     const obsCam = this.resolveCameraByScene(scene);
     return obsCam ? this.store.cameraSnapshots()[obsCam.id] ?? null : null;
   });
 
-  manualSwitch(camera: Camera): void {
-    this.api.setObsScene(camera.obs_scene_name || '', 'program').subscribe();
+  manualSwitch(sceneName: string): void {
+    if (!this.isObsConnected()) return;
+    this.api.setObsScene(sceneName, 'program').subscribe();
   }
 
   reloadCameras(): void {
     this.api.getCameras().subscribe(cameras => this.store.setCameras(cameras));
+  }
+
+  refreshScenes(): void {
+    this.api.getObsStatus().subscribe(status => this.store.updateObsStatus(status));
+  }
+
+  refreshSceneSnapshots(): void {
+    if (!this.isObsConnected()) {
+      if (Object.keys(this.sceneSnapshots()).length > 0) {
+        this.sceneSnapshots.set({});
+      }
+      return;
+    }
+
+    const scenes = this.getSceneList();
+    if (scenes.length === 0) {
+      this.sceneSnapshots.set({});
+      return;
+    }
+
+    for (const scene of scenes) {
+      this.api.getObsSceneSnapshot(scene, this.sceneSnapshotIntervalMs).subscribe(resp => {
+        if (!resp.image_data) return;
+        this.sceneSnapshots.update(snaps => ({ ...snaps, [scene]: resp.image_data as string }));
+      });
+    }
+  }
+
+  getProgramPlaceholderText(): string {
+    if (!this.isObsConnected()) return 'No signal';
+    const scene = this.store.obsStatus()?.current_program ?? null;
+    if (scene && this.sceneSnapshots()[scene]) return scene;
+    return 'No signal';
+  }
+
+  getPreviewPlaceholderText(): string {
+    if (!this.isObsConnected()) return 'No signal';
+    const scene = this.store.obsStatus()?.current_preview ?? null;
+    if (scene && this.sceneSnapshots()[scene]) return scene;
+    return 'No signal';
   }
 
   formatDuration(ms: number): string {
@@ -503,19 +574,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   getProgramLabel(): string {
-    const cam = this.store.programCamera();
-    if (cam) return cam.label;
     const scene = this.store.obsStatus()?.current_program;
-    const obsCam = this.resolveCameraByScene(scene ?? null);
-    return obsCam?.label ?? scene ?? 'No Program';
+    return scene ?? 'No Program';
   }
 
   getPreviewLabel(): string {
-    const cam = this.store.previewCamera();
-    if (cam) return cam.label;
     const scene = this.store.obsStatus()?.current_preview;
-    const obsCam = this.resolveCameraByScene(scene ?? null);
-    return obsCam?.label ?? scene ?? 'No Preview';
+    return scene ?? 'No Preview';
   }
 
   private resolveCameraByScene(sceneName: string | null): Camera | null {
@@ -531,4 +596,5 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.destroy$.next();
     this.destroy$.complete();
   }
+
 }

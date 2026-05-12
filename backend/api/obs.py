@@ -63,3 +63,13 @@ async def get_scenes():
     if not client.is_connected:
         raise HTTPException(status_code=503, detail="OBS not connected")
     return await client.refresh_scenes()
+
+
+@router.get("/snapshot")
+async def get_scene_snapshot(scene_name: str, cache_ms: int = 2000):
+    client = get_obs_client()
+    if not client.is_connected:
+        raise HTTPException(status_code=503, detail="OBS not connected")
+    ttl_s = max(0, cache_ms) / 1000.0
+    image_data = await client.get_scene_snapshot_cached(scene_name, ttl_s=ttl_s)
+    return {"scene": scene_name, "image_data": image_data}

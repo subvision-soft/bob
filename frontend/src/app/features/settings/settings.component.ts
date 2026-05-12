@@ -1,17 +1,17 @@
-import {Component, OnInit, signal} from '@angular/core';
-import {CommonModule} from '@angular/common';
-import {FormsModule} from '@angular/forms';
+import { Component, OnInit, signal } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 
-import {InputTextModule} from 'primeng/inputtext';
-import {ButtonModule} from 'primeng/button';
-import {ToggleSwitchModule} from 'primeng/toggleswitch';
-import {SliderModule} from 'primeng/slider';
-import {TagModule} from 'primeng/tag';
-import {ToastModule} from 'primeng/toast';
-import {AccordionModule} from 'primeng/accordion';
-import {MessageService} from 'primeng/api';
+import { InputTextModule } from 'primeng/inputtext';
+import { ButtonModule } from 'primeng/button';
+import { ToggleSwitchModule } from 'primeng/toggleswitch';
+import { SliderModule } from 'primeng/slider';
+import { TagModule } from 'primeng/tag';
+import { ToastModule } from 'primeng/toast';
+import { AccordionModule } from 'primeng/accordion';
+import { MessageService } from 'primeng/api';
 
-import {ApiService} from '../../core/api.service';
+import { ApiService } from '../../core/api.service';
 
 interface SystemSettings {
   external_api_url: string;
@@ -22,6 +22,7 @@ interface SystemSettings {
   min_display_ms: number;
   default_cooldown_ms: number;
   score_threshold: number;
+  idle_scene_rotation_ms: number;
   snapshot_interval_ms: number;
   obs_enabled: boolean;
   debug: boolean;
@@ -112,6 +113,17 @@ interface SystemSettings {
                   <p-slider [(ngModel)]="settings.default_cooldown_ms" (change)="onSettingChange()" [min]="0"
                             [max]="10000" [step]="500"/>
                   <span class="slider-val">{{ settings.default_cooldown_ms }}ms</span>
+                </div>
+              </div>
+              <div class="setting-row">
+                <div class="setting-info">
+                  <label>Idle Scene Rotation</label>
+                  <span>Rotate through the current camera's configured OBS scenes after this much idle time. 0 disables rotation.</span>
+                </div>
+                <div class="slider-field">
+                  <p-slider [(ngModel)]="settings.idle_scene_rotation_ms" (change)="onSettingChange()" [min]="0"
+                            [max]="30000" [step]="500"/>
+                  <span class="slider-val">{{ settings.idle_scene_rotation_ms }}ms</span>
                 </div>
               </div>
               <div class="setting-row">
@@ -375,12 +387,13 @@ export class SettingsComponent implements OnInit {
     min_display_ms: 2000,
     default_cooldown_ms: 3000,
     score_threshold: 60,
+    idle_scene_rotation_ms: 0,
     snapshot_interval_ms: 500,
     obs_enabled: true,
     debug: false,
   };
 
-  originalSettings: SystemSettings = {...this.settings};
+  originalSettings: SystemSettings = { ...this.settings };
   saving = signal(false);
   hasChanges = signal(false);
 
@@ -406,15 +419,18 @@ export class SettingsComponent implements OnInit {
             min_display_ms: Number(backendSettings['min_display_duration_ms'] || this.settings.min_display_ms),
             default_cooldown_ms: Number(backendSettings['default_cooldown_ms'] || this.settings.default_cooldown_ms),
             score_threshold: Number(backendSettings['score_threshold_switch'] || this.settings.score_threshold),
+            idle_scene_rotation_ms: Number(
+              backendSettings['idle_scene_rotation_ms'] ?? this.settings.idle_scene_rotation_ms,
+            ),
             snapshot_interval_ms: Number(backendSettings['video_snapshot_interval_ms'] || this.settings.snapshot_interval_ms),
             obs_enabled: Boolean(backendSettings['obs_enabled']) || this.settings.obs_enabled,
             debug: Boolean(backendSettings['debug']) || this.settings.debug,
           };
-          this.originalSettings = {...this.settings};
+          this.originalSettings = { ...this.settings };
           this.hasChanges.set(false);
         }
       }, error: (err) => {
-        this.msg.add({severity: 'error', summary: 'Load Failed', detail: 'Could not load settings from server'});
+        this.msg.add({ severity: 'error', summary: 'Load Failed', detail: 'Could not load settings from server' });
         console.error('Failed to load settings:', err);
       },
     });
@@ -425,17 +441,18 @@ export class SettingsComponent implements OnInit {
 
     // Map UI field names to backend field names
     const updates: Record<string, { value: unknown; value_type: string }> = {
-      'external_api_url': {value: this.settings.external_api_url, value_type: 'string'},
-      'external_api_poll_interval_ms': {value: this.settings.poll_interval_ms, value_type: 'int'},
-      'obs_websocket_url': {value: this.settings.obs_url, value_type: 'string'},
-      'obs_websocket_password': {value: this.settings.obs_password, value_type: 'string'},
-      'decision_cycle_ms': {value: this.settings.decision_cycle_ms, value_type: 'int'},
-      'min_display_duration_ms': {value: this.settings.min_display_ms, value_type: 'int'},
-      'default_cooldown_ms': {value: this.settings.default_cooldown_ms, value_type: 'int'},
-      'score_threshold_switch': {value: this.settings.score_threshold, value_type: 'float'},
-      'video_snapshot_interval_ms': {value: this.settings.snapshot_interval_ms, value_type: 'int'},
-      'obs_enabled': {value: this.settings.obs_enabled, value_type: 'bool'},
-      'debug': {value: this.settings.debug, value_type: 'bool'},
+      'external_api_url': { value: this.settings.external_api_url, value_type: 'string' },
+      'external_api_poll_interval_ms': { value: this.settings.poll_interval_ms, value_type: 'int' },
+      'obs_websocket_url': { value: this.settings.obs_url, value_type: 'string' },
+      'obs_websocket_password': { value: this.settings.obs_password, value_type: 'string' },
+      'decision_cycle_ms': { value: this.settings.decision_cycle_ms, value_type: 'int' },
+      'min_display_duration_ms': { value: this.settings.min_display_ms, value_type: 'int' },
+      'default_cooldown_ms': { value: this.settings.default_cooldown_ms, value_type: 'int' },
+      'score_threshold_switch': { value: this.settings.score_threshold, value_type: 'float' },
+      'idle_scene_rotation_ms': { value: this.settings.idle_scene_rotation_ms, value_type: 'int' },
+      'video_snapshot_interval_ms': { value: this.settings.snapshot_interval_ms, value_type: 'int' },
+      'obs_enabled': { value: this.settings.obs_enabled, value_type: 'bool' },
+      'debug': { value: this.settings.debug, value_type: 'bool' },
     };
 
     this.api.updateSettings(updates).subscribe({
@@ -445,7 +462,7 @@ export class SettingsComponent implements OnInit {
           summary: 'Saved',
           detail: 'Settings have been saved. Some changes may require backend restart.'
         });
-        this.originalSettings = {...this.settings};
+        this.originalSettings = { ...this.settings };
         this.hasChanges.set(false);
         this.saving.set(false);
       }, error: (err) => {
@@ -458,7 +475,7 @@ export class SettingsComponent implements OnInit {
   }
 
   resetSettings(): void {
-    this.settings = {...this.originalSettings};
+    this.settings = { ...this.originalSettings };
     this.hasChanges.set(false);
   }
 
@@ -468,14 +485,14 @@ export class SettingsComponent implements OnInit {
 
   exportConfig(): void {
     this.api.exportConfig().subscribe(data => {
-      const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = `subvision-config-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
       URL.revokeObjectURL(url);
-      this.msg.add({severity: 'success', summary: 'Exported', detail: 'Configuration downloaded'});
+      this.msg.add({ severity: 'success', summary: 'Exported', detail: 'Configuration downloaded' });
     });
   }
 }

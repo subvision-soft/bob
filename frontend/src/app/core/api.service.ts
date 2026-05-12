@@ -81,6 +81,11 @@ export interface OBSStatus {
   scenes: string[];
 }
 
+export interface OBSSceneSnapshot {
+  scene: string;
+  image_data: string | null;
+}
+
 export interface HealthStatus {
   status: string;
   version: string;
@@ -166,6 +171,14 @@ export class ApiService {
     return this.http.get<string[]>(`${API_BASE}/obs/scenes`);
   }
 
+  getObsSceneSnapshot(sceneName: string, cacheMs: number = 2000): Observable<OBSSceneSnapshot> {
+    return this.http.get<OBSSceneSnapshot>(`${API_BASE}/obs/snapshot`, {
+      params: new HttpParams()
+        .set('scene_name', sceneName)
+        .set('cache_ms', String(cacheMs)),
+    });
+  }
+
   // ── Monitoring ───────────────────────────────────────────────────
   getHealth(): Observable<HealthStatus> {
     return this.http.get<HealthStatus>(`${API_BASE}/monitoring/health`);
@@ -180,17 +193,17 @@ export class ApiService {
   getSettings(): Observable<{ status: string; settings: Record<string, unknown> }> {
     return this.http.get<{ status: string; settings: Record<string, unknown> }>(`${API_BASE}/settings`);
   }
-  
+
   updateSetting(key: string, value: unknown, valueType: string = 'string'): Observable<unknown> {
     return this.http.put(`${API_BASE}/settings/${key}`, {
       value: String(value),
       value_type: valueType,
     });
   }
-  
+
   updateSettings(updates: Record<string, { value: unknown; value_type: string }>): Observable<unknown> {
     const payload: Record<string, { value: string; value_type: string }> = {};
-    for (const [key, {value, value_type}] of Object.entries(updates)) {
+    for (const [key, { value, value_type }] of Object.entries(updates)) {
       payload[key] = { value: String(value), value_type };
     }
     return this.http.put(`${API_BASE}/settings`, payload);

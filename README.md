@@ -1,3 +1,5 @@
+<center><img src="./bob.png"></center>
+
 # BOB (Broadcast Operator Bot)
 
 BOB is an automation system that controls OBS scene switching in real time based on live event detection.

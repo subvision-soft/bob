@@ -1,4 +1,4 @@
-<center><img src="bob.png"></center>
+<center><img src="Bob.png"></center>
 
 # BOB (Broadcast Operator Bot)
 

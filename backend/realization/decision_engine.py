@@ -176,7 +176,6 @@ class RealizationDecisionEngine:
             raise
 
     async def _evaluate_cycle(self) -> DecisionTrace:
-        log.debug("decision_engine.evaluate_cycle")
         trace = DecisionTrace()
         contexts = subscriber_registry.get_all_contexts()
         cameras = camera_registry.get_all()

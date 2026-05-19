@@ -13,6 +13,9 @@ export interface DecisionTrace {
   winner_score: number;
   winner_reason: string;
   switch_triggered: boolean;
+  idle_rotation_triggered?: boolean;
+  scene_max_display_triggered?: boolean;
+  rotated_scene?: string | null;
   blocked_reason: string | null;
   global_cooldown_active: boolean;
   min_display_enforced: boolean;
@@ -35,6 +38,8 @@ export interface GlobalContext {
   competition_id: string | null;
   program_camera_id: string | null;
   preview_camera_id: string | null;
+  program_scene_name?: string | null;
+  program_scene_since_ms?: number;
   time_on_current_camera_ms: number;
   is_global_cooldown_active: boolean;
   total_switches: number;

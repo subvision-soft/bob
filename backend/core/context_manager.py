@@ -56,6 +56,8 @@ class GlobalContext:
     program_camera_id: Optional[str] = None      # Currently on air
     preview_camera_id: Optional[str] = None      # Loaded in preview
     program_since: float = 0.0
+    program_scene_name: Optional[str] = None
+    program_scene_since: float = 0.0
 
     # ── Timing ────────────────────────────────────────────────────────
     last_switch_at: float = 0.0
@@ -102,6 +104,10 @@ class GlobalContext:
             "competition_id": self.competition_id,
             "program_camera_id": self.program_camera_id,
             "preview_camera_id": self.preview_camera_id,
+            "program_scene_name": self.program_scene_name,
+            "program_scene_since_ms": round(
+                (time.monotonic() - self.program_scene_since) * 1000, 0
+            ) if self.program_scene_since else 0,
             "time_on_current_camera_ms": round(self.time_on_current_camera_ms, 0),
             "is_global_cooldown_active": self.is_global_cooldown_active,
             "total_switches": self.total_switches,

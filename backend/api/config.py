@@ -41,6 +41,8 @@ async def export_config():
                 "source_type": c.source_type,
                 "source_url": c.source_url,
                 "obs_scene_name": c.obs_scene_name,
+                "obs_scene_weight": c.obs_scene_weight,
+                "obs_scene_max_display_ms": c.obs_scene_max_display_ms,
                 "enabled": c.enabled,
                 "subscriptions": [
                     {
@@ -55,6 +57,7 @@ async def export_config():
                             {
                                 "scene_name": o.scene_name,
                                 "weight": o.weight,
+                                "max_display_ms": o.max_display_ms,
                             }
                             for o in s.obs_scene_options
                         ],

@@ -15,6 +15,7 @@ from backend.database import AsyncSessionLocal
 from backend.events.engine import event_engine
 from backend.models import Camera, CameraSubscriptionModel
 from backend.api.cameras import _register_camera_subscriber
+from backend.core.camera_registry import camera_registry
 
 log = structlog.get_logger(__name__)
 
@@ -33,6 +34,7 @@ class EventPollerWorker:
                 )
                 cameras = result.scalars().all()
                 log.info("event_poller_worker.loading_cameras", count=len(cameras))
+                await camera_registry.set_all(cameras)
                 for camera in cameras:
                     await _register_camera_subscriber(camera)
 

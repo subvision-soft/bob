@@ -314,16 +314,12 @@ class EventEngine:
         try:
             camera_ids = self._candidate_camera_ids()
             if not camera_ids:
-                log.debug("event_engine.poll_skip", reason="no_subscribers_or_camera_windows")
                 return []
 
             for camera_id in camera_ids:
                 payload = self._frame_window_payload(camera_id)
                 if payload is None:
-                    log.debug("event_engine.poll_skip", camera_id=camera_id, reason=self._last_skip_reason.get(camera_id, "unknown"))
                     continue
-
-                log.debug("event_engine.polling")
                 response = await self._client.post(
                     "/events/pending",
                     json=payload,

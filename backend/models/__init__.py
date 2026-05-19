@@ -45,6 +45,8 @@ class Camera(Base):
     source_type: Mapped[str] = mapped_column(String(32), default="rtsp")  # rtsp|ndi|webcam|obs_scene
     source_url: Mapped[Optional[str]] = mapped_column(String(512))
     obs_scene_name: Mapped[Optional[str]] = mapped_column(String(256))
+    obs_scene_weight: Mapped[float] = mapped_column(Float, default=1.0)
+    obs_scene_max_display_ms: Mapped[int] = mapped_column(Integer, default=0)
 
     # Status
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -92,6 +94,7 @@ class CameraObsSceneOption(Base):
 
     scene_name: Mapped[str] = mapped_column(String(256), nullable=False)
     weight: Mapped[float] = mapped_column(Float, default=1.0)
+    max_display_ms: Mapped[int] = mapped_column(Integer, default=0)
 
     camera: Mapped["Camera"] = relationship(back_populates="obs_scene_options")
 
@@ -107,6 +110,7 @@ class CameraSubscriptionSceneOption(Base):
 
     scene_name: Mapped[str] = mapped_column(String(256), nullable=False)
     weight: Mapped[float] = mapped_column(Float, default=1.0)
+    max_display_ms: Mapped[int] = mapped_column(Integer, default=0)
 
     subscription: Mapped["CameraSubscriptionModel"] = relationship(
         back_populates="obs_scene_options"

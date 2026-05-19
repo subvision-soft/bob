@@ -14,14 +14,18 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Callable, Coroutine, Dict, List, Optional, TYPE_CHECKING
 
 import structlog
 from obswebsocket import obsws, requests as obs_requests, events as obs_events  # type: ignore
 
+from backend.core.camera_registry import camera_registry
 from backend.core.context_manager import SwitchRecord, global_context
+from backend.database import AsyncSessionLocal
+from backend.models import Camera
 from backend.realization.camera_subscriber import subscriber_registry
 from backend.websocket.manager import ws_manager
+from sqlalchemy import select
 
 log = structlog.get_logger(__name__)
 
@@ -60,6 +64,7 @@ class OBSClient:
         self._current_program: Optional[str] = None
         self._current_preview: Optional[str] = None
         self._scene_snapshot_cache: Dict[str, tuple[float, Optional[str]]] = {}
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
 
     @property
     def state(self) -> str:
@@ -80,6 +85,7 @@ class OBSClient:
     async def connect(self) -> None:
         self._set_state(OBSConnectionState.CONNECTING)
         try:
+            self._loop = asyncio.get_running_loop()
             # Parse ws://host:port into components
             url = self._url.replace("ws://", "").replace("wss://", "")
             host, port = url.rsplit(":", 1) if ":" in url else (url, "4455")
@@ -244,45 +250,22 @@ class OBSClient:
     def _on_event(self, event: Any) -> None:
         """Receive events from OBS (scene changes, etc.)."""
         event_type = type(event).__name__
-        scene_name = getattr(event, "sceneName", None) or getattr(event, "scene_name", None)
+        scene_name = getattr(event, "sceneName", None) or getattr(event, "scene_name", None) or getattr(event, "datain", {}).get("sceneName") or getattr(event, "datain", {}).get("scene_name")
         if scene_name:
             # Update internal cache
             if event_type in {"CurrentProgramSceneChanged", "CurrentSceneChanged"}:
                 self._current_program = scene_name
+                global_context.program_scene_name = scene_name
+                global_context.program_scene_since = time.monotonic()
 
-                # Try to map the scene name back to a camera and update global context
-                try:
-                    match_ctx = self._resolve_camera_by_scene(scene_name)
-                    prev_cam = global_context.program_camera_id
-
-                    if match_ctx and prev_cam != match_ctx.camera_id:
-                        if prev_cam:
-                            prev_sub = subscriber_registry.get_subscriber(prev_cam)
-                            if prev_sub:
-                                prev_sub.context.mark_off_air()
-                        match_ctx.mark_on_air()
-                        global_context.program_camera_id = match_ctx.camera_id
-                        global_context.program_since = time.monotonic()
-                        global_context.record_switch(SwitchRecord(
-                            from_camera=prev_cam,
-                            to_camera=match_ctx.camera_id,
-                            reason="obs_external_switch",
-                            score=0.0,
-                            event_type=None,
-                        ))
-
-                    if match_ctx:
-                        asyncio.create_task(self._broadcast_obs_sync(match_ctx.camera_id, scene_name))
-
-                except Exception:
-                    log.exception("obs_client.program_scene_sync_failed")
+                self._run_on_loop(self._handle_program_scene_changed(scene_name))
 
             elif event_type == "CurrentPreviewSceneChanged":
                 self._current_preview = scene_name
                 try:
                     match_ctx = self._resolve_camera_by_scene(scene_name)
                     global_context.preview_camera_id = match_ctx.camera_id if match_ctx else None
-                    asyncio.create_task(self._broadcast_obs_sync(None, scene_name, preview_only=True))
+                    self._run_on_loop(self._broadcast_obs_sync(None, scene_name, preview_only=True))
                 except Exception:
                     log.exception("obs_client.preview_scene_sync_failed")
 
@@ -301,6 +284,57 @@ class OBSClient:
                     if opt.scene_name == scene_name:
                         return ctx
         return None
+
+    def _resolve_camera_id_by_scene_db(self, scene_name: str) -> Optional[str]:
+        cameras = camera_registry.get_all()
+        for camera in cameras:
+            if (
+                camera.enabled
+                and camera.source_type == "obs_scene"
+                and camera.source_url == scene_name
+            ):
+                return camera.id
+        return None
+
+
+
+    async def _handle_program_scene_changed(self, scene_name: str) -> None:
+        """Map OBS program scene to an OBS-scene camera and update global context."""
+        try:
+            match_id = self._resolve_camera_id_by_scene_db(scene_name)
+            if not match_id:
+                return
+
+            prev_cam = global_context.program_camera_id
+            if prev_cam != match_id:
+                if prev_cam:
+                    prev_sub = subscriber_registry.get_subscriber(prev_cam)
+                    if prev_sub:
+                        prev_sub.context.mark_off_air()
+
+                match_sub = subscriber_registry.get_subscriber(match_id)
+                if match_sub:
+                    match_sub.context.mark_on_air()
+
+                global_context.program_camera_id = match_id
+                global_context.program_since = time.monotonic()
+                global_context.record_switch(SwitchRecord(
+                    from_camera=prev_cam,
+                    to_camera=match_id,
+                    reason="obs_external_switch",
+                    score=0.0,
+                    event_type=None,
+                ))
+
+            await self._broadcast_obs_sync(match_id, scene_name)
+        except Exception:
+            log.exception("obs_client.program_scene_sync_failed")
+
+    def _run_on_loop(self, coro: Coroutine[Any, Any, Any]) -> None:
+        if self._loop and self._loop.is_running():
+            asyncio.run_coroutine_threadsafe(coro, self._loop)
+        else:
+            asyncio.create_task(coro)
 
     async def _broadcast_obs_sync(
         self,

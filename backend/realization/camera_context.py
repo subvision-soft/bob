@@ -48,6 +48,7 @@ class CameraSubscription:
 class ObsSceneOption:
     scene_name: str
     weight: float = 1.0
+    max_display_ms: int = 0
 
 
 @dataclass
@@ -57,7 +58,10 @@ class CameraContext:
     Read by the Realization Decision Engine.
     """
     camera_id: str
+    source_type: Optional[str] = None
     obs_scene_name: Optional[str] = None
+    obs_scene_weight: float = 1.0
+    obs_scene_max_display_ms: int = 0
 
     # ── Event state ───────────────────────────────────────────────────
     last_event: Optional[CompetitionEvent] = None

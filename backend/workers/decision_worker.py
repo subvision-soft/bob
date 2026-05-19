@@ -5,6 +5,7 @@ Wires up OBS client and WebSocket broadcast callback on startup.
 
 from __future__ import annotations
 
+import asyncio
 import structlog
 
 from backend.obs.client import get_obs_client
@@ -21,4 +22,11 @@ class DecisionWorker:
         decision_engine.set_ws_broadcast(ws_manager.broadcast)
 
         log.info("decision_worker.starting")
-        await decision_engine.run()
+        try:
+            await decision_engine.run()
+        except asyncio.CancelledError:
+            log.info("decision_worker.cancelled")
+            raise
+        except Exception:
+            log.exception("decision_worker.failed")
+            raise

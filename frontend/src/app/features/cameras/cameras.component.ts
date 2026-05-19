@@ -17,7 +17,7 @@ import { ToastModule } from 'primeng/toast';
 
 import { ApiService, Camera, CameraObsSceneOption, CameraSubscription } from '../../core/api.service';
 import { AppStore } from '../../store/app.store';
-import {TooltipModule} from "primeng/tooltip";
+import { TooltipModule } from "primeng/tooltip";
 
 const REACTION_MODES = [
   { label: 'INFORM ONLY', value: 'INFORM_ONLY', severity: 'secondary' },
@@ -163,6 +163,21 @@ const EVENT_TYPES = [
             </div>
           </div>
 
+          @if (cameraForm.get('source_type')?.value === 'obs_scene') {
+            <div class="form-row">
+              <div class="form-field">
+                <label>Scene Weight</label>
+                <input pInputText type="number" min="0.001" step="0.1" formControlName="obs_scene_weight"
+                       placeholder="1.0" />
+              </div>
+              <div class="form-field">
+                <label>Max Display (ms)</label>
+                <input pInputText type="number" min="0" step="100" formControlName="obs_scene_max_display_ms"
+                       placeholder="0 = no limit" />
+              </div>
+            </div>
+          }
+
           <div class="form-field">
             <div class="switch-row">
               <p-toggle-switch formControlName="enabled" />
@@ -214,7 +229,8 @@ const EVENT_TYPES = [
                           placeholder="Select scene"
                           [disabled]="!obsConnected || obsSceneSelectOptionsFor(i).length === 0"
                         />
-                        <input pInputText type="number" min="0.001" step="0.1" formControlName="weight" />
+                           <input pInputText type="number" min="0.001" step="0.1" formControlName="weight"
+                             placeholder="Weight" pTooltip="Selection weight" />
                         <p-button icon="pi pi-trash" severity="danger" [text]="true" size="small"
                                   (onClick)="removeSubScene(i, j)" />
                       </div>
@@ -373,6 +389,8 @@ export class CamerasComponent implements OnInit {
       label: [camera?.label ?? '', Validators.required],
       source_type: [camera?.source_type ?? 'rtsp'],
       source_url: [camera?.source_url ?? ''],
+      obs_scene_weight: [camera?.obs_scene_weight ?? 1, [Validators.min(0.0001)]],
+      obs_scene_max_display_ms: [camera?.obs_scene_max_display_ms ?? 0, [Validators.min(0)]],
       enabled: [camera?.enabled ?? true],
       subscriptions: this.fb.array(
         (camera?.subscriptions ?? []).map(s => this._subGroup(s))
@@ -428,6 +446,7 @@ export class CamerasComponent implements OnInit {
     return this.fb.group({
       scene_name: [option?.scene_name ?? '', Validators.required],
       weight: [option?.weight ?? 1, [Validators.required, Validators.min(0.0001)]],
+      max_display_ms: [option?.max_display_ms ?? 0, [Validators.min(0)]],
     });
   }
 

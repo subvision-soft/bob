@@ -18,7 +18,14 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from backend.api import cameras, config, events, monitoring, obs, rules, settings as settings_api
 from backend.core.settings import get_settings
 from backend.core.settings_service import SettingsService, set_settings_service
-from backend.database import init_db, migrate_subscription_scene_options, get_db_session
+from backend.core.camera_registry import camera_registry
+from backend.database import (
+    init_db,
+    migrate_subscription_scene_options,
+    migrate_scene_option_max_display,
+    migrate_camera_obs_scene_fields,
+    get_db_session,
+)
 from backend.websocket.manager import ws_manager
 from backend.obs.client import get_obs_client
 from backend.workers.decision_worker import DecisionWorker
@@ -41,6 +48,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # ── Database ──────────────────────────────────────────────────────
     await init_db()
     await migrate_subscription_scene_options()
+    await migrate_scene_option_max_display()
+    await migrate_camera_obs_scene_fields()
 
     # ── Settings Service ──────────────────────────────────────────────
     db_session = get_db_session()
@@ -66,6 +75,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await service.initialize_defaults(default_settings)
     await service.load_from_db()
     set_settings_service(service)
+
+    await camera_registry.refresh()
 
     # ── OBS Auto-Connect ──────────────────────────────────────────────
     if settings.obs_enabled:

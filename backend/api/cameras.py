@@ -16,6 +16,7 @@ from backend.core.context_manager import global_context
 from backend.database import get_db
 from backend.models import Camera, CameraSubscriptionModel, CameraSubscriptionSceneOption
 from backend.core.event_bus import event_bus
+from backend.core.camera_registry import camera_registry
 from backend.events.models import CompetitionEvent, EventType, EVENT_SEVERITY
 from backend.realization.camera_context import CameraContext, CameraSubscription, ObsSceneOption, ReactionMode
 from backend.realization.camera_subscriber import subscriber_registry
@@ -33,6 +34,8 @@ def _model_to_response(camera: Camera) -> CameraResponse:
         source_type=camera.source_type,
         source_url=camera.source_url,
         obs_scene_name=camera.obs_scene_name,
+        obs_scene_weight=camera.obs_scene_weight,
+        obs_scene_max_display_ms=camera.obs_scene_max_display_ms,
         enabled=camera.enabled,
         is_active=camera.is_active,
         subscriptions=[
@@ -49,6 +52,7 @@ def _model_to_response(camera: Camera) -> CameraResponse:
                     {
                         "scene_name": o.scene_name,
                         "weight": o.weight,
+                        "max_display_ms": o.max_display_ms,
                     }
                     for o in s.obs_scene_options
                 ],
@@ -70,13 +74,24 @@ async def _register_camera_subscriber(camera: Camera) -> None:
             delay_ms=s.delay_ms,
             enabled=s.enabled,
             obs_scene_options=[
-                ObsSceneOption(scene_name=o.scene_name, weight=o.weight)
+                ObsSceneOption(
+                    scene_name=o.scene_name,
+                    weight=o.weight,
+                    max_display_ms=o.max_display_ms,
+                )
                 for o in s.obs_scene_options
             ],
         )
         for s in camera.subscriptions
     ]
-    ctx = CameraContext(camera_id=camera.id, obs_scene_name=camera.obs_scene_name, subscriptions=subs)
+    ctx = CameraContext(
+        camera_id=camera.id,
+        source_type=camera.source_type,
+        obs_scene_name=camera.obs_scene_name,
+        obs_scene_weight=camera.obs_scene_weight,
+        obs_scene_max_display_ms=camera.obs_scene_max_display_ms,
+        subscriptions=subs,
+    )
     await subscriber_registry.register(ctx)
 
 
@@ -101,6 +116,8 @@ async def create_camera(payload: CameraCreate, db: AsyncSession = Depends(get_db
         source_type=payload.source_type,
         source_url=payload.source_url,
         obs_scene_name=payload.obs_scene_name,
+        obs_scene_weight=payload.obs_scene_weight,
+        obs_scene_max_display_ms=payload.obs_scene_max_display_ms,
         enabled=payload.enabled,
     )
     db.add(camera)
@@ -125,6 +142,7 @@ async def create_camera(payload: CameraCreate, db: AsyncSession = Depends(get_db
                 subscription_id=sub_model.id,
                 scene_name=option.scene_name,
                 weight=option.weight,
+                max_display_ms=option.max_display_ms,
             ))
 
     await db.commit()
@@ -140,6 +158,7 @@ async def create_camera(payload: CameraCreate, db: AsyncSession = Depends(get_db
 
     # Register in live subscriber system
     await _register_camera_subscriber(camera)
+    await camera_registry.upsert(camera)
 
     log.info("cameras.created", camera_id=camera.id, name=camera.name)
     return _model_to_response(camera)
@@ -187,6 +206,10 @@ async def update_camera(
         camera.source_url = payload.source_url
     if payload.obs_scene_name is not None:
         camera.obs_scene_name = payload.obs_scene_name
+    if payload.obs_scene_weight is not None:
+        camera.obs_scene_weight = payload.obs_scene_weight
+    if payload.obs_scene_max_display_ms is not None:
+        camera.obs_scene_max_display_ms = payload.obs_scene_max_display_ms
     if payload.enabled is not None:
         camera.enabled = payload.enabled
 
@@ -229,6 +252,7 @@ async def update_camera(
                     subscription_id=sub_model.id,
                     scene_name=option.scene_name,
                     weight=option.weight,
+                    max_display_ms=option.max_display_ms,
                 ))
 
     await db.commit()
@@ -248,6 +272,8 @@ async def update_camera(
     if camera.enabled:
         await _register_camera_subscriber(camera)
 
+    await camera_registry.upsert(camera)
+
     return _model_to_response(camera)
 
 
@@ -259,6 +285,7 @@ async def delete_camera(camera_id: str, db: AsyncSession = Depends(get_db)):
     await subscriber_registry.unregister(camera_id)
     await db.delete(camera)
     await db.commit()
+    await camera_registry.remove(camera_id)
 
 
 @router.get("/{camera_id}/context")

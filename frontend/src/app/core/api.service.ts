@@ -15,6 +15,8 @@ export interface Camera {
   source_type: string;
   source_url: string | null;
   obs_scene_name: string | null;
+  obs_scene_weight: number;
+  obs_scene_max_display_ms: number;
   enabled: boolean;
   is_active: boolean;
   subscriptions: CameraSubscription[];
@@ -23,6 +25,7 @@ export interface Camera {
 export interface CameraObsSceneOption {
   scene_name: string;
   weight: number;
+  max_display_ms: number;
 }
 
 export interface CameraSubscription {

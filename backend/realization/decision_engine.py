@@ -25,8 +25,10 @@ from typing import Dict, List, Optional, TYPE_CHECKING
 import structlog
 
 from backend.core.context_manager import GlobalContext, SwitchRecord, global_context
+from backend.core.camera_registry import camera_registry
 from backend.core.settings import get_settings
 from backend.realization.camera_context import CameraContext, ReactionMode
+from backend.models import Camera
 from backend.realization.camera_subscriber import subscriber_registry
 
 if TYPE_CHECKING:
@@ -46,6 +48,7 @@ class DecisionTrace:
     winner_reason: str = ""
     switch_triggered: bool = False
     idle_rotation_triggered: bool = False
+    scene_max_display_triggered: bool = False
     rotated_scene: Optional[str] = None
     blocked_reason: Optional[str] = None
     global_cooldown_active: bool = False
@@ -60,6 +63,7 @@ class DecisionTrace:
             "winner_reason": self.winner_reason,
             "switch_triggered": self.switch_triggered,
             "idle_rotation_triggered": self.idle_rotation_triggered,
+            "scene_max_display_triggered": self.scene_max_display_triggered,
             "rotated_scene": self.rotated_scene,
             "blocked_reason": self.blocked_reason,
             "global_cooldown_active": self.global_cooldown_active,
@@ -155,14 +159,27 @@ class RealizationDecisionEngine:
 
                 elapsed = time.monotonic() - cycle_start
                 sleep = max(0.0, self._cycle_interval - elapsed)
+                if cycle_count % 200 == 0:
+                    log.debug(
+                        "decision_engine.cycle",
+                        cycle=cycle_count,
+                        elapsed_ms=round(elapsed * 1000.0, 2),
+                        sleep_ms=round(sleep * 1000.0, 2),
+                    )
                 await asyncio.sleep(sleep)
 
         except asyncio.CancelledError:
             log.info("decision_engine.cancelled")
+            raise
+        except Exception:
+            log.exception("decision_engine.failed")
+            raise
 
     async def _evaluate_cycle(self) -> DecisionTrace:
+        log.debug("decision_engine.evaluate_cycle")
         trace = DecisionTrace()
         contexts = subscriber_registry.get_all_contexts()
+        cameras = camera_registry.get_all()
 
         if not contexts:
             return trace
@@ -195,7 +212,14 @@ class RealizationDecisionEngine:
 
         trace.candidates = candidates
 
-        # ── 2. Check global cooldown ───────────────────────────────────
+
+        # ── 2. Enforce hard max display rotations (ignores cooldowns) ─────────
+        if await self._handle_obs_scene_camera_rotation(contexts, trace):
+            return trace
+        if await self._handle_scene_max_display(contexts, trace,cameras):
+            return trace
+
+        # ── 3. Check global cooldown ───────────────────────────────────
         if self._ctx.is_global_cooldown_active:
             trace.global_cooldown_active = True
             trace.blocked_reason = "global_cooldown_active"
@@ -203,14 +227,14 @@ class RealizationDecisionEngine:
             if not force_candidates:
                 return trace
 
-        # ── 3. Enforce minimum display duration ────────────────────────
+        # ── 4. Enforce minimum display duration ────────────────────────
         time_on_air_ms = self._ctx.time_on_current_camera_ms
         if time_on_air_ms < self._min_display_ms and not force_candidates:
             trace.min_display_enforced = True
             trace.blocked_reason = f"min_display_not_reached ({time_on_air_ms:.0f}ms < {self._min_display_ms}ms)"
             return trace
 
-        # ── 4. Elect winner ────────────────────────────────────────────
+        # ── 5. Elect winner ────────────────────────────────────────────
         winner_ctx: Optional[CameraContext] = None
 
         # FORCE_SWITCH wins unconditionally (highest priority among force candidates)
@@ -234,11 +258,11 @@ class RealizationDecisionEngine:
         if winner_ctx is None:
             # Also handle PREPARE mode: load preview without switching
             await self._handle_prepare_mode(contexts)
-            if await self._handle_idle_rotation(contexts, trace):
+            if await self._handle_idle_rotation(cameras, trace):
                 return trace
             return trace
 
-        # ── 5. Execute switch ──────────────────────────────────────────
+        # ── 6. Execute switch ──────────────────────────────────────────
         trace.winner = winner_ctx.camera_id
         trace.winner_score = winner_ctx.interest_score
         trace.switch_triggered = True
@@ -297,6 +321,8 @@ class RealizationDecisionEngine:
             else:
                 try:
                     await self._obs.set_program_scene(scene_name)
+                    self._ctx.program_scene_name = scene_name
+                    self._ctx.program_scene_since = time.monotonic()
                 except Exception as e:
                     log.error("decision_engine.obs_switch_failed", error=str(e))
 
@@ -332,7 +358,7 @@ class RealizationDecisionEngine:
                     except Exception as e:
                         log.error("decision_engine.obs_preview_failed", error=str(e))
 
-    async def _handle_idle_rotation(self, contexts: list[CameraContext], trace: DecisionTrace) -> bool:
+    async def _handle_idle_rotation(self, cameras: list[Camera], trace: DecisionTrace) -> bool:
         """Rotate the current program camera's configured scenes after an idle period."""
         if not self._obs or not settings.obs_enabled:
             return False
@@ -349,38 +375,41 @@ class RealizationDecisionEngine:
         if idle_ms < self._idle_scene_rotation_ms:
             return False
 
-        current_ctx = next((ctx for ctx in contexts if ctx.camera_id == self._ctx.program_camera_id), None)
-        if current_ctx is None:
+        current_camera = next((cam for cam in cameras if cam.id == self._ctx.program_camera_id), None)
+        if current_camera is None:
             return False
 
-        scene_options = self._collect_rotation_scenes(current_ctx)
-        if len(scene_options) < 2:
+        if len(cameras) < 2:
             return False
 
         current_scene = self._obs.current_program_scene
-        next_scene = self._next_rotation_scene(scene_options, current_scene)
+        if not current_scene:
+            return False
+        next_scene = self._pick_weighted_scene(cameras, current_scene)
         if next_scene is None or next_scene == current_scene:
             return False
 
         try:
             await self._obs.set_program_scene(next_scene)
+            self._ctx.program_scene_name = next_scene
+            self._ctx.program_scene_since = time.monotonic()
             trace.switch_triggered = True
             trace.idle_rotation_triggered = True
             trace.rotated_scene = next_scene
-            trace.winner = current_ctx.camera_id
+            trace.winner = current_camera.id
             trace.winner_reason = f"IDLE_SCENE_ROTATION ({idle_ms:.0f}ms idle)"
 
             self._ctx.record_switch(SwitchRecord(
-                from_camera=current_ctx.camera_id,
-                to_camera=current_ctx.camera_id,
+                from_camera=current_camera.id,
+                to_camera=current_camera.id,
                 reason=trace.winner_reason,
-                score=current_ctx.interest_score,
+                score=100.0,  # full score for idle rotation
                 event_type=None,
             ))
 
             log.info(
                 "decision_engine.idle_scene_rotated",
-                camera_id=current_ctx.camera_id,
+                camera_id=current_camera.id,
                 scene=next_scene,
                 idle_ms=round(idle_ms, 0),
             )
@@ -389,28 +418,170 @@ class RealizationDecisionEngine:
             log.error("decision_engine.idle_rotation_failed", error=str(e))
             return False
 
-    def _collect_rotation_scenes(self, ctx: CameraContext) -> list[str]:
-        scenes: list[str] = []
-        seen: set[str] = set()
+    async def _handle_scene_max_display(self, contexts: list[CameraContext], trace: DecisionTrace, cameras: List[Camera]) -> bool:
+        """Rotate scenes when the current scene hits its max display time."""
+        if not self._obs or not settings.obs_enabled:
+            return False
+
+
+        if not self._ctx.program_camera_id:
+            return False
+
+        current_scene = self._obs.current_program_scene
+        if not current_scene:
+            return False
+
+        if self._ctx.program_scene_name != current_scene:
+            self._ctx.program_scene_name = current_scene
+            self._ctx.program_scene_since = time.monotonic()
+
+        current_ctx = next((ctx for ctx in contexts if ctx.camera_id == self._ctx.program_camera_id), None)
+        if current_ctx is None:
+            return False
+
+        if len(cameras) < 2:
+            return False
+
+        current_option = next((o for o in cameras if o.source_url == current_scene), None)
+        if not current_option or current_option.obs_scene_max_display_ms <= 0:
+            return False
+        max_display_ms_ = current_option.obs_scene_max_display_ms
+
+        elapsed_ms = (time.monotonic() - self._ctx.program_scene_since) * 1000.0
+        if elapsed_ms < max_display_ms_:
+            return False
+
+        next_scene = self._pick_weighted_scene(cameras, current_scene)
+        if not next_scene or next_scene == current_scene:
+            return False
+
+        try:
+            await self._obs.set_program_scene(next_scene)
+            self._ctx.program_scene_name = next_scene
+            self._ctx.program_scene_since = time.monotonic()
+            trace.switch_triggered = True
+            trace.scene_max_display_triggered = True
+            trace.rotated_scene = next_scene
+            trace.winner = current_ctx.camera_id
+            trace.winner_reason = f"SCENE_MAX_DISPLAY ({elapsed_ms:.0f}ms >= {max_display_ms_}ms)"
+
+            self._ctx.record_switch(SwitchRecord(
+                from_camera=current_ctx.camera_id,
+                to_camera=current_ctx.camera_id,
+                reason=trace.winner_reason,
+                score=100.0,
+                event_type=None,
+            ))
+
+            log.info(
+                "decision_engine.scene_max_display_rotated",
+                camera_id=current_ctx.camera_id,
+                scene=next_scene,
+                elapsed_ms=round(elapsed_ms, 0),
+            )
+            return True
+        except Exception as e:
+            log.error("decision_engine.scene_max_display_failed", error=str(e))
+            return False
+
+    async def _handle_obs_scene_camera_rotation(
+        self,
+        contexts: list[CameraContext],
+        trace: DecisionTrace,
+    ) -> bool:
+        """Rotate OBS-scene cameras when the current camera hits its max display time."""
+        if not self._ctx.program_camera_id:
+            return False
+
+        current_ctx = next(
+            (ctx for ctx in contexts if ctx.camera_id == self._ctx.program_camera_id),
+            None,
+        )
+        if not current_ctx or current_ctx.source_type != "obs_scene":
+            return False
+
+        max_display_ms = current_ctx.obs_scene_max_display_ms
+        if max_display_ms <= 0:
+            return False
+
+        time_on_air_ms = self._ctx.time_on_current_camera_ms
+        if time_on_air_ms < max_display_ms:
+            return False
+
+        candidates = [
+            ctx for ctx in contexts
+            if ctx.camera_id != current_ctx.camera_id
+            and ctx.source_type == "obs_scene"
+            and not ctx.is_in_cooldown
+        ]
+        winner = self._pick_weighted_camera(candidates)
+        if winner is None:
+            return False
+
+        trace.winner = winner.camera_id
+        trace.winner_score = winner.interest_score
+        trace.winner_reason = (
+            f"SCENE_MAX_DISPLAY ({time_on_air_ms:.0f}ms >= {max_display_ms}ms)"
+        )
+        trace.switch_triggered = True
+        trace.scene_max_display_triggered = True
+        trace.rotated_scene = winner.obs_scene_name
+
+        await self._execute_switch(winner, trace)
+        return True
+
+    @staticmethod
+    def _pick_weighted_camera(candidates: list[CameraContext]) -> Optional[CameraContext]:
+        weighted = [c for c in candidates if c.obs_scene_weight > 0]
+        if not weighted:
+            return None
+        total_weight = sum(c.obs_scene_weight for c in weighted)
+        if total_weight <= 0:
+            return None
+        roll = random.uniform(0.0, total_weight)
+        running = 0.0
+        for candidate in weighted:
+            running += candidate.obs_scene_weight
+            if roll <= running:
+                return candidate
+        return weighted[-1]
+
+    def _collect_scene_options(self, ctx: CameraContext) -> list[dict]:
+        scene_map: Dict[str, dict] = {}
         for sub in ctx.subscriptions:
             if not sub.enabled:
                 continue
             for option in sub.obs_scene_options:
                 scene_name = option.scene_name.strip() if option.scene_name else ""
-                if not scene_name or scene_name in seen or option.weight <= 0:
+                if not scene_name or option.weight <= 0:
                     continue
-                seen.add(scene_name)
-                scenes.append(scene_name)
-        return scenes
+                existing = scene_map.get(scene_name)
+                if existing:
+                    existing["weight"] += option.weight
+                    existing["max_display_ms"] = max(existing["max_display_ms"], option.max_display_ms)
+                else:
+                    scene_map[scene_name] = {
+                        "scene_name": scene_name,
+                        "weight": option.weight,
+                        "max_display_ms": option.max_display_ms,
+                    }
+        return list(scene_map.values())
 
     @staticmethod
-    def _next_rotation_scene(scene_options: list[str], current_scene: Optional[str]) -> Optional[str]:
-        if not scene_options:
+    def _pick_weighted_scene(cameras: list[Camera], exclude_scene: Optional[str]) -> Optional[str]:
+        candidates = [o for o in cameras if o.source_url != exclude_scene]
+        if not candidates:
             return None
-        if current_scene in scene_options:
-            current_index = scene_options.index(current_scene)
-            return scene_options[(current_index + 1) % len(scene_options)]
-        return scene_options[0]
+        total_weight = sum(o.obs_scene_weight for o in candidates)
+        if total_weight <= 0:
+            return None
+        roll = random.uniform(0.0, total_weight)
+        running = 0.0
+        for option in candidates:
+            running += option.obs_scene_weight
+            if roll <= running:
+                return option.source_url
+        return candidates[-1].source_url
 
     def _pick_obs_scene(self, ctx: CameraContext) -> Optional[str]:
         event_type = ctx.pending_event_type or ctx.last_event_type

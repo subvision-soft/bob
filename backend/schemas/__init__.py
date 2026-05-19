@@ -25,6 +25,7 @@ class CameraSubscriptionSchema(BaseModel):
 class CameraObsSceneOptionSchema(BaseModel):
     scene_name: str = Field(..., min_length=1, max_length=256)
     weight: float = Field(1.0, gt=0)
+    max_display_ms: int = Field(0, ge=0)
 
 
 class CameraCreate(BaseModel):
@@ -33,6 +34,8 @@ class CameraCreate(BaseModel):
     source_type: str = "rtsp"
     source_url: Optional[str] = None
     obs_scene_name: Optional[str] = None
+    obs_scene_weight: float = Field(1.0, gt=0)
+    obs_scene_max_display_ms: int = Field(0, ge=0)
     enabled: bool = True
     subscriptions: List[CameraSubscriptionSchema] = []
 
@@ -51,6 +54,8 @@ class CameraUpdate(BaseModel):
     source_type: Optional[str] = None
     source_url: Optional[str] = None
     obs_scene_name: Optional[str] = None
+    obs_scene_weight: Optional[float] = Field(None, gt=0)
+    obs_scene_max_display_ms: Optional[int] = Field(None, ge=0)
     enabled: Optional[bool] = None
     subscriptions: Optional[List[CameraSubscriptionSchema]] = None
 
@@ -62,6 +67,8 @@ class CameraResponse(BaseModel):
     source_type: str
     source_url: Optional[str]
     obs_scene_name: Optional[str]
+    obs_scene_weight: float
+    obs_scene_max_display_ms: int
     enabled: bool
     is_active: bool
     subscriptions: List[CameraSubscriptionSchema]

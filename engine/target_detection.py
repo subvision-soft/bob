@@ -285,8 +285,7 @@ def detect_shot_between_frames(previous_frame: ndarray, current_frame: ndarray) 
     # Detect shot if:
     # - Found a reasonably long line (>= 50px) AND confidence >= 0.35
     # This catches single arrow appearances
-    shot_detected = max_line_length >= 50 and confidence >= 0.35
-
+    shot_detected = max_line_length >= 50 and confidence >= 0.60 and len(line_segments) > 15
     return {
         "shot_detected": shot_detected,
         "event_type": "SHOT_FIRED" if shot_detected else None,

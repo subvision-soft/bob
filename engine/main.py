@@ -31,7 +31,7 @@ app.include_router(
     event.router,
     prefix="/api/events",
     tags=["target"],
-    dependencies=[Depends(validate_token)],
+    # dependencies=[Depends(validate_token)],
     responses={404: {"description": "Not found"}},
 )
 
